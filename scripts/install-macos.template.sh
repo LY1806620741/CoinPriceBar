@@ -11,7 +11,7 @@ case "$arch" in
   *) echo "Unsupported arch: $arch" >&2; exit 1 ;;
 esac
 
-asset="KucoinStatusBar-${suffix}.dmg"
+asset="CoinPriceBar-${suffix}.dmg"
 url="https://github.com/${OWNER}/${REPO}/releases/latest/download/${asset}"
 
 echo "Detected arch: ${arch} -> ${suffix}"
@@ -23,12 +23,12 @@ curl -fL --retry 3 -o "$asset" "$url"
 
 echo "Mounting DMG..."
 hdiutil attach "$asset" -nobrowse -quiet
-vol="/Volumes/KucoinStatusBar"
+vol="/Volumes/CoinPriceBar"
 
 echo "Copying app to /Applications..."
-cp -R "${vol}/KucoinStatusBar.app" /Applications/
+cp -R "${vol}/CoinPriceBar.app" /Applications/
 
 echo "Detaching..."
 hdiutil detach "${vol}" -quiet || true
 
-echo "Installed: /Applications/KucoinStatusBar.app"
+echo "Installed: /Applications/CoinPriceBar.app"

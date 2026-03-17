@@ -252,7 +252,7 @@ class KucoinPriceMonitor:
 
 
 # ===================== UI：状态栏应用 =====================
-class KucoinStatusBarApp(rumps.App):
+class CoinPriceBarApp(rumps.App):
     """状态栏应用类（仅处理UI逻辑）"""
 
     def __init__(self, name="KuCoin 价格", spot_symbols: List[str] = ["BTC-USDT"]):
@@ -489,7 +489,7 @@ def main():
 
     try:
         logging.info("启动KuCoin状态栏应用...")
-        app = KucoinStatusBarApp(spot_symbols=["KCS-USDT", "BTC-USDT", "ETH-USDT"])
+        app = CoinPriceBarApp(spot_symbols=["KCS-USDT", "BTC-USDT", "ETH-USDT"])
         app.run()
     except Exception as e:
         logging.critical(f"应用启动失败: {str(e)}\n{traceback.format_exc()}")

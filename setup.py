@@ -5,8 +5,8 @@ import os
 
 # ---------------- 基础信息 ----------------
 APP = ["KCSApp.py"]
-APP_NAME = "KucoinStatusBar"  # .app 名称
-BUNDLE_ID = "com.ly1806620741.kucoinstatusbar"  # Bundle ID（唯一）
+APP_NAME = "CoinPriceBar"  # .app 名称
+BUNDLE_ID = "com.ly1806620741.CoinPriceBar"  # Bundle ID（唯一）
 VERSION = os.getenv("APP_VERSION", "1.0.0")
 
 ICON_FILE = "icon.icns"

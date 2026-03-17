@@ -10,20 +10,20 @@ jobs:
     strategy:
       matrix:
         include:
-          - runner: macos-14   # Apple Silicon
+          - runner: macos-latest   # Apple Silicon
             arch: arm64
             arch_suffix: darwin-arm64
-          - runner: macos-13   # Intel
+          - runner: macos-latest   # Intel
             arch: x86_64
             arch_suffix: darwin-x64
     runs-on: ${{ matrix.runner }}
 
     env:
-      APP_NAME: KucoinStatusBar
+      APP_NAME: CoinPriceBar
       PYTHON_VERSION: "3.14"
       ARCH: ${{ matrix.arch }}
       ARCH_SUFFIX: ${{ matrix.arch_suffix }}
-      DMG_NAME: KucoinStatusBar-${{ matrix.arch_suffix }}.dmg
+      DMG_NAME: CoinPriceBar-${{ matrix.arch_suffix }}.dmg
 
     steps:
       - name: Checkout
@@ -42,8 +42,6 @@ jobs:
 
       - name: Build .app with py2app
         env:
-          # 对 Apple Silicon / Intel，默认各自 Runner 的系统架构即可；
-          # 如需强制，可加：ARCHFLAGS="-arch $ARCH"
           ARCHFLAGS: "-arch $ARCH"
           APP_VERSION: "0.0.0-${{ github.sha }}"
         run: |
@@ -59,7 +57,7 @@ jobs:
           brew install create-dmg
           create-dmg \
             --volname "${{ env.APP_NAME }}" \
-            --volicon "app/icon.icns" \
+            --volicon "icon.icns" \
             --window-pos 200 120 \
             --window-size 600 400 \
             --icon-size 100 \

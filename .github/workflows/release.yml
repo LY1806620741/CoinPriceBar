@@ -10,20 +10,20 @@ jobs:
     strategy:
       matrix:
         include:
-          - runner: macos-14
+          - runner: macos-latest
             arch: arm64
             arch_suffix: darwin-arm64
-          - runner: macos-13
+          - runner: macos-latest
             arch: x86_64
             arch_suffix: darwin-x64
     runs-on: ${{ matrix.runner }}
 
     env:
-      APP_NAME: KucoinStatusBar
+      APP_NAME: CoinPriceBar
       PYTHON_VERSION: "3.14"
       ARCH: ${{ matrix.arch }}
       ARCH_SUFFIX: ${{ matrix.arch_suffix }}
-      DMG_NAME: KucoinStatusBar-${{ matrix.arch_suffix }}.dmg
+      DMG_NAME: CoinPriceBar-${{ matrix.arch_suffix }}.dmg
       VERSION: ${{ github.ref_name }}
 
     steps:
@@ -54,7 +54,7 @@ jobs:
           brew install create-dmg
           create-dmg \
             --volname "${{ env.APP_NAME }}" \
-            --volicon "app/icon.icns" \
+            --volicon "icon.icns" \
             --window-pos 200 120 \
             --window-size 600 400 \
             --icon-size 100 \
