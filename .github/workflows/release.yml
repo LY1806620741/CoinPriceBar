@@ -1,0 +1,85 @@
+name: macOS Release (ARM & Intel)
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-and-release:
+    strategy:
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+            arch_suffix: darwin-arm64
+          - runner: macos-13
+            arch: x86_64
+            arch_suffix: darwin-x64
+    runs-on: ${{ matrix.runner }}
+
+    env:
+      APP_NAME: KucoinStatusBar
+      PYTHON_VERSION: "3.14"
+      ARCH: ${{ matrix.arch }}
+      ARCH_SUFFIX: ${{ matrix.arch_suffix }}
+      DMG_NAME: KucoinStatusBar-${{ matrix.arch_suffix }}.dmg
+      VERSION: ${{ github.ref_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install build deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install py2app
+
+      - name: Build .app with py2app
+        env:
+          ARCHFLAGS: "-arch $ARCH"
+          APP_VERSION: "${{ env.VERSION }}"
+        run: |
+          echo "Building $VERSION for $ARCH ..."
+          python setup.py py2app
+
+      - name: Create DMG
+        run: |
+          brew install create-dmg
+          create-dmg \
+            --volname "${{ env.APP_NAME }}" \
+            --volicon "app/icon.icns" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "${{ env.APP_NAME }}.app" 200 190 \
+            --app-drop-link 400 190 \
+            "dist/${{ env.DMG_NAME }}" \
+            "dist/${{ env.APP_NAME }}.app"
+      
+      - name: Render install script with real owner/repo
+        run: |
+          OWNER="${GITHUB_REPOSITORY%/*}"
+          REPO="${GITHUB_REPOSITORY##*/}"
+          mkdir -p dist
+          sed -e "s|<OWNER>|$OWNER|g" \
+              -e "s|<REPO>|$REPO|g" \
+              scripts/install-macos.template.sh > dist/install-macos.sh
+          chmod +x dist/install-macos.sh
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.VERSION }}
+          files: |
+            dist/${{ env.APP_NAME }}.app
+            dist/${{ env.DMG_NAME }}
+            dist/install-macos.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
