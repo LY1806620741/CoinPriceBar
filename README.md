@@ -1,4 +1,6 @@
-# CryptoTickerBar
+# CoinPriceBar
+
+[English](./README.en.md)
 
 一个简单的运行在 **macOS 菜单栏（Status Bar）** 的 **加密货币价格显示应用**。  
 基于 **Python + rumps + py2app** 构建，用于实时展示主流币种价格。

@@ -1,4 +1,6 @@
-# CryptoTickerBar
+# CoinPriceBar
+
+[中文](./README.en.md)
 
 A lightweight **macOS menu bar app** for displaying **cryptocurrency prices** in real time.  
 Built with **Python + rumps + py2app**.
