@@ -5,85 +5,129 @@ on:
     tags:
       - 'v*.*.*'
 
-
 permissions:
   contents: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-and-release:
+  build:
     strategy:
       matrix:
         include:
           - runner: macos-latest
             arch: arm64
-            arch_suffix: darwin-arm64
+            suffix: darwin-arm64
           - runner: macos-latest
             arch: x86_64
-            arch_suffix: darwin-x64
+            suffix: darwin-x64
     runs-on: ${{ matrix.runner }}
 
     env:
       APP_NAME: CoinPriceBar
-      PYTHON_VERSION: "3.14"
-      ARCH: ${{ matrix.arch }}
-      ARCH_SUFFIX: ${{ matrix.arch_suffix }}
-      DMG_NAME: CoinPriceBar-${{ matrix.arch_suffix }}.dmg
-      VERSION: ${{ github.ref_name }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: '3.14'
 
-      - name: Install build deps
+      - name: Build .app
+        env:
+          APP_VERSION: "${{ github.ref_name }}"
+          ARCHFLAGS: "-arch ${{ matrix.arch }}"
         run: |
+          set -euo pipefail
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install py2app
-
-      - name: Build .app with py2app
-        env:
-          ARCHFLAGS: "-arch $ARCH"
-          APP_VERSION: "${{ env.VERSION }}"
-        run: |
-          echo "Building $VERSION for $ARCH ..."
           python setup.py py2app
+          test -d "dist/${APP_NAME}.app"
 
-      - name: Create DMG
+      - name: Make DMG (hdiutil)
         run: |
-          brew install create-dmg
-          create-dmg \
-            --volname "${{ env.APP_NAME }}" \
-            --volicon "icon.icns" \
-            --window-pos 200 120 \
-            --window-size 600 400 \
-            --icon-size 100 \
-            --icon "${{ env.APP_NAME }}.app" 200 190 \
-            --app-drop-link 400 190 \
-            "dist/${{ env.DMG_NAME }}" \
-            "dist/${{ env.APP_NAME }}.app"
-      
-      - name: Render install script with real owner/repo
+          set -euo pipefail
+          mkdir -p dist/pkg-root
+          cp -R "dist/${APP_NAME}.app" "dist/pkg-root/"
+          hdiutil create -volname "${APP_NAME}" \
+            -srcfolder "dist/pkg-root" \
+            -ov -format UDZO "dist/${APP_NAME}-${{ matrix.suffix }}.dmg"
+          ls -al dist
+
+      - name: Compute SHA256
         run: |
+          set -euo pipefail
+          cd dist
+          shasum -a 256 "${APP_NAME}-${{ matrix.suffix }}.dmg" > "${APP_NAME}-${{ matrix.suffix }}.dmg.sha256"
+          cat "${APP_NAME}-${{ matrix.suffix }}.dmg.sha256"
+
+      - name: Upload build artifacts (for next job)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.suffix }}
+          path: |
+            dist/${{ env.APP_NAME }}-${{ matrix.suffix }}.dmg
+            dist/${{ env.APP_NAME }}-${{ matrix.suffix }}.dmg.sha256
+          if-no-files-found: error
+
+  render-and-release:
+    needs: [build]
+    runs-on: macos-latest
+    env:
+      APP_NAME: CoinPriceBar
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts (all arches)
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Compute final SHA256 (collect arm64/x64)
+        id: bothsha
+        run: |
+          set -euo pipefail
+          APP="${APP_NAME}"
+          ARM="dist/${APP}-darwin-arm64.dmg"
+          X64="dist/${APP}-darwin-x64.dmg"
+
+          SHA_ARM=""; SHA_X64=""
+          if [[ -f "$ARM" ]]; then SHA_ARM="$(shasum -a 256 "$ARM" | awk '{print $1}')"; fi
+          if [[ -f "$X64" ]]; then SHA_X64="$(shasum -a 256 "$X64" | awk '{print $1}')"; fi
+
+          echo "sha_arm64=$SHA_ARM" >> "$GITHUB_OUTPUT"
+          echo "sha_x64=$SHA_X64"   >> "$GITHUB_OUTPUT"
+
+      - name: Render installer (embed OWNER/REPO & SHA256; remove dead mirrors)
+        run: |
+          set -euo pipefail
           OWNER="${GITHUB_REPOSITORY%/*}"
           REPO="${GITHUB_REPOSITORY##*/}"
+          SHA_ARM64="${{ steps.bothsha.outputs.sha_arm64 }}"
+          SHA_X64="${{ steps.bothsha.outputs.sha_x64 }}"
+          [[ -z "$SHA_X64" ]] && SHA_X64="DISABLED_X64_NO_BUILD"
+
           mkdir -p dist
           sed -e "s|<OWNER>|$OWNER|g" \
               -e "s|<REPO>|$REPO|g" \
+              -e "s|__SHA256_ARM64__|$SHA_ARM64|g" \
+              -e "s|__SHA256_X64__|$SHA_X64|g" \
               scripts/install-macos.template.sh > dist/install-macos.sh
           chmod +x dist/install-macos.sh
 
-      - name: Upload Release Assets
+      - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.VERSION }}
+          tag_name: ${{ github.ref_name }}
           files: |
-            dist/${{ env.APP_NAME }}.app
-            dist/${{ env.DMG_NAME }}
+            dist/${{ env.APP_NAME }}-darwin-*.dmg
+            dist/${{ env.APP_NAME }}-darwin-*.dmg.sha256
             dist/install-macos.sh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -119,7 +119,6 @@ class KucoinPriceMonitor:
                 .set_websocket_client_option(
                     WebSocketClientOptionBuilder()
                     .with_event_callback(self._ws_event_callback)
-                    .with_reconnect_attempts(2)  # 运行时会在 stop() 里尝试调为 0
                     .build()
                 )
                 .set_spot_endpoint(GLOBAL_API_ENDPOINT)
