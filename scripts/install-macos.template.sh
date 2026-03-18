@@ -144,7 +144,7 @@ fi
 ok "已下载 DMG" "DMG downloaded"
 
 # ========= SHA256 校验 =========
-if [[ -z "$expect_sha" || "$expect_sha" == "__SHA256_ARM64__" || "$expect_sha" == "__SHA256_X64__" ]]; then
+if [[ -z "$expect_sha" ]]; then
   err "脚本内未注入有效的 SHA256，请更新到最新安装脚本" \
       "Invalid embedded SHA256. Please use the latest installer script."
   exit 1
