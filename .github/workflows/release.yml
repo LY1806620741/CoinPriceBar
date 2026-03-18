@@ -109,6 +109,7 @@ jobs:
           set -euo pipefail
           OWNER="${GITHUB_REPOSITORY%/*}"
           REPO="${GITHUB_REPOSITORY##*/}"
+          TAG=${GITHUB_REF_NAME}
           SHA_ARM64="${{ steps.bothsha.outputs.sha_arm64 }}"
           SHA_X64="${{ steps.bothsha.outputs.sha_x64 }}"
           [[ -z "$SHA_X64" ]] && SHA_X64="DISABLED_X64_NO_BUILD"
@@ -116,6 +117,7 @@ jobs:
           mkdir -p dist
           sed -e "s|<OWNER>|$OWNER|g" \
               -e "s|<REPO>|$REPO|g" \
+              -e "s|<TAG>|$TAG|g" \
               -e "s|__SHA256_ARM64__|$SHA_ARM64|g" \
               -e "s|__SHA256_X64__|$SHA_X64|g" \
               scripts/install-macos.template.sh > dist/install-macos.sh

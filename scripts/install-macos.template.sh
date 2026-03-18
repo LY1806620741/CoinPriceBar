@@ -11,8 +11,7 @@ VOLUME_NAME="CoinPriceBar"
 SHA256_ARM64="__SHA256_ARM64__"
 SHA256_X64="__SHA256_X64__"
 
-# 可选：固定版本标签（如：TAG=v1.0.3）。若不传，脚本将自动解析 latest 的跳转以得到具体版本
-TAG="${TAG:-}"
+TAG="${TAG:-<TAG>}"
 
 # ==== 默认镜像（可用 MIRRORS 覆盖或追加，空格分隔）====
 DEFAULT_MIRRORS=(
@@ -35,45 +34,18 @@ esac
 
 asset="${APP_NAME}-${suffix}.dmg"
 
-# ========= 解析具体版本（若未显式传 TAG）=========
-resolve_tag() {
-  # 通过 latest 的最终跳转获取具体 tag：…/releases/download/<TAG>/<asset>
-  local latest="https://github.com/${OWNER}/${REPO}/releases/latest/download/${asset}"
-  # 仅解析 URL，不下载实体
-  local final
-  if ! final="$(curl -sIL -o /dev/null -w '%{url_effective}' "$latest")"; then
-    return 1
-  fi
-  # 提取 TAG
-  if [[ "$final" =~ /download/([^/]+)/${asset}$ ]]; then
-    printf "%s" "${BASH_REMATCH[1]}"
-  else
-    return 1
-  fi
-}
-
-if [[ -z "${TAG}" ]]; then
-  info "正在解析最新版本标签…" "Resolving the latest tag…"
-  if ! TAG="$(resolve_tag)"; then
-    err "无法解析最新版本，请稍后重试或手动指定 TAG=..." \
-        "Failed to resolve latest tag. Retry later or specify TAG=..."
-    exit 1
-  fi
-fi
-ok "已锁定版本：${TAG}" "Pinned version: ${TAG}"
+ok "版本：${TAG}" "version: ${TAG}"
 
 # ========= 构造正式 URL（固定到具体版本）=========
 origin_url="https://github.com/${OWNER}/${REPO}/releases/download/${TAG}/${asset}"
 
 # ========= 组装候选 URL 列表 =========
-# 顺序：自定义镜像（MIRRORS） > 默认镜像 > 官方源
 MIRRORS="${MIRRORS:-}"
 declare -a candidates
 if [[ -n "$MIRRORS" ]]; then
   for m in $MIRRORS; do candidates+=("${m}/${origin_url}"); done
 fi
 for m in "${DEFAULT_MIRRORS[@]}"; do candidates+=("${m}/${origin_url}"); done
-# 官方源（无镜像）
 candidates+=("${origin_url}")
 
 say "已检测架构：${arch} → ${suffix}" "Detected architecture: ${arch} → ${suffix}"
@@ -90,23 +62,19 @@ cleanup() {
 trap cleanup EXIT
 cd "$tmpd"
 
-# ========= 并行测速：Range 0–0，计算“连接+首字节”开销，择优 =========
-# 为避免部分镜像不支持 HEAD，这里采用 range 0-0 的最小字节请求
+# ========= 并行测速 =========
 probe_best() {
-  local -n arr=$1
-  local -A score=()           # url -> cost(ms)
+  local arr=("$@")
+  local score=()
   local procs=()
   local i=0 u
 
   for u in "${arr[@]}"; do
     {
-      # 超时：连接 5s，总 8s；失败用一个大数表示
       local out
       if out="$(curl -sS -L -r 0-0 --connect-timeout 5 --max-time 8 -o /dev/null \
                  -w '%{time_connect} %{time_starttransfer}' "$u" 2>/dev/null)"; then
-        # 取连接 + 首字节时间之和（秒 -> 毫秒）
         local tc ts; read -r tc ts <<<"$out"
-        # bash 浮点：用 awk 转毫秒
         local ms; ms="$(awk -v a="$tc" -v b="$ts" 'BEGIN{printf("%.0f",(a+b)*1000)}')"
         printf "%s %s\n" "$ms" "$u"
       else
@@ -117,10 +85,8 @@ probe_best() {
     ((i++))
   done
 
-  # 等待
   for p in "${procs[@]}"; do wait "$p" || true; done
 
-  # 选择最小
   local best_ms=999999 best_url=""
   for f in probe.*; do
     read -r ms url <"$f" || continue
@@ -128,40 +94,48 @@ probe_best() {
     if (( ms < best_ms )); then best_ms="$ms"; best_url="$url"; fi
   done
 
-  if [[ -n "$best_url" ]]; then
-    echo "$best_url"
-  else
-    echo ""
-  fi
+  echo "$best_url"
 }
 
-best_url="$(probe_best candidates)"
+best_url="$(probe_best "${candidates[@]}")"
 if [[ -z "$best_url" ]]; then
   err "测速失败，改用顺序下载" "Probing failed. Falling back to sequential download"
   best_url="${candidates[0]}"
 fi
 info "首选通道：$best_url" "Chosen endpoint: $best_url"
 
-# ========= 下载：首选通道失败则依次回退 =========
+# ========= 重新排序：best_url 优先 =========
+declare -a ordered
+ordered=("$best_url")
+for u in "${candidates[@]}"; do
+  [[ "$u" != "$best_url" ]] && ordered+=("$u")
+done
+
 download_with_fallback() {
   local out="$1"
   shift
   for u in "$@"; do
     info "尝试下载：$u" "Trying: $u"
-    if curl -fL --retry 2 --connect-timeout 10 --max-time 600 -o "$out" "$u"; then
-      return 0
+
+    # ======================
+    # 🔥 有 aria2c 则用它高速下载
+    # ======================
+    if command -v aria2c &> /dev/null; then
+      info "使用 aria2c 多线程加速下载" "Using aria2c for fast download"
+      if aria2c -x 16 -s 16 --timeout=30 -d "$(dirname "$out")" -o "$(basename "$out")" "$u"; then
+        return 0
+      fi
+    else
+      # 无 aria2c 则用 curl
+      if curl -fL --retry 2 --connect-timeout 10 --max-time 600 -o "$out" "$u"; then
+        return 0
+      fi
     fi
+
     say "此通道不可用，继续回退…" "This endpoint failed. Trying next…"
   done
   return 1
 }
-
-# 重新排列候选列表：把 best_url 放到最前
-declare -a ordered
-ordered=("$best_url")
-for u in "${candidates[@]}"; do
-  [[ "$u" == "$best_url" ]] || ordered+=("$u")
-done
 
 if ! download_with_fallback "$asset" "${ordered[@]}"; then
   err "所有镜像与官方源下载失败" "Failed to download from all endpoints"
@@ -177,9 +151,10 @@ if [[ -z "$expect_sha" || "$expect_sha" == "__SHA256_ARM64__" || "$expect_sha" =
 fi
 
 calc_sha="$(shasum -a 256 "$asset" | awk '{print $1}')"
-if [[ "${calc_sha,,}" != "${expect_sha,,}" ]]; then
-  err "文件校验失败！期望：$expect_sha，实际：$calc_sha" \
-      "Checksum mismatch! Expected: $expect_sha, Got: $calc_sha"
+calc_sha_lower=$(echo "$calc_sha" | tr '[:upper:]' '[:lower:]')
+expect_sha_lower=$(echo "$expect_sha" | tr '[:upper:]' '[:lower:]')
+if [[ "$calc_sha_lower" != "$expect_sha_lower" ]]; then
+  err "校验失败！期望：$expect_sha 实际：$calc_sha" "Checksum mismatch"
   exit 1
 fi
 ok "校验通过" "Checksum OK"
