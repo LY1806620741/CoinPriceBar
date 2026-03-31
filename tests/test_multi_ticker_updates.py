@@ -48,6 +48,7 @@ class MultiTickerUpdateTests(unittest.TestCase):
         self.app._build_display_context = lambda snapshot: CoinPriceBarApp._build_display_context(self.app, snapshot)
         self.app._render_text = lambda snapshot, template, is_title=False: CoinPriceBarApp._render_text(self.app, snapshot, template, is_title)
         self.app._refresh_snapshot_ui = lambda key: CoinPriceBarApp._refresh_snapshot_ui(self.app, key)
+        self.app._should_log = lambda key: False
 
     def test_refresh_snapshot_updates_title_and_second_menu_item(self):
         CoinPriceBarApp._refresh_snapshot_ui(self.app, self.app.active_tickers[0].key)
@@ -94,9 +95,12 @@ class MultiTickerUpdateTests(unittest.TestCase):
         snapshot.change_percent = 0.0
         snapshot.is_first = True
         self.app.price_menu_items[target_key].title = "Binance:ETH: 加载中..."
+        self.app._process_ui_queue = lambda _=None: CoinPriceBarApp._process_ui_queue(self.app, _)
 
         CoinPriceBarApp._on_price_update(self.app, "binance", "ETH-USDT", 66.66)
         self.assertGreaterEqual(self.app.ui_queue.qsize(), 1)
+
+        self.app._process_ui_queue()
 
         updated = self.app.price_menu_items[target_key].title
         self.assertIn("66.66", updated)

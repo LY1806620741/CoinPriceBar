@@ -53,7 +53,7 @@ class BinancePriceSource(BasePriceSource):
                 else:
                     symbol = raw_symbol
             price = _safe_float(data.get("c"))
-            logging.info(f"Binance ticker: {symbol} -> {price}")
+            logging.debug(f"Binance ticker: {symbol} -> {price}")
             self._emit_price(symbol, price)
         except Exception as e:
             logging.error(f"Binance 消息处理失败: {e}\n{traceback.format_exc()}")

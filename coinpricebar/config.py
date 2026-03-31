@@ -24,6 +24,13 @@ DEFAULT_TICKERS = [
     ("binance", "BTC-USDT", "BTC"),
     ("binance", "ETH-USDT", "ETH"),
 ]
+PERFORMANCE_PRESETS = {
+    "stable": 0.5,
+    "balanced": 0.25,
+    "realtime": 0.12,
+    "custom": None,
+}
+DEFAULT_PERFORMANCE_MODE = "balanced"
 
 
 @dataclass
@@ -59,6 +66,8 @@ class AppConfig:
     menu_template: str = DEFAULT_MENU_TEMPLATE
     show_exchange_links: bool = True
     ticker_preferences: Dict[str, UITickerPreference] = field(default_factory=dict)
+    ui_refresh_interval: float = 0.25
+    performance_mode: str = DEFAULT_PERFORMANCE_MODE
 
     @classmethod
     def default(cls) -> "AppConfig":
@@ -74,6 +83,8 @@ class AppConfig:
             menu_template=DEFAULT_MENU_TEMPLATE,
             show_exchange_links=True,
             ticker_preferences=preferences,
+            ui_refresh_interval=PERFORMANCE_PRESETS[DEFAULT_PERFORMANCE_MODE],
+            performance_mode=DEFAULT_PERFORMANCE_MODE,
         )
 
 
@@ -88,6 +99,18 @@ def get_default_tickers() -> List[TickerConfig]:
     ]
 
 
+def _normalize_performance_mode(mode: object) -> str:
+    mode_str = str(mode or DEFAULT_PERFORMANCE_MODE).strip().lower()
+    return mode_str if mode_str in PERFORMANCE_PRESETS else DEFAULT_PERFORMANCE_MODE
+
+
+def _resolve_refresh_interval(ui: dict, default_config: AppConfig) -> tuple[str, float]:
+    mode = _normalize_performance_mode(ui.get("performance_mode", default_config.performance_mode))
+    custom_value = max(0.05, float(ui.get("ui_refresh_interval", default_config.ui_refresh_interval)))
+    preset_value = PERFORMANCE_PRESETS.get(mode)
+    return mode, (custom_value if preset_value is None else float(preset_value))
+
+
 def _serialize_default_config(default_config: AppConfig) -> Dict[str, object]:
     return {
         "ui": {
@@ -97,6 +120,8 @@ def _serialize_default_config(default_config: AppConfig) -> Dict[str, object]:
             "title_template": default_config.title_template,
             "menu_template": default_config.menu_template,
             "show_exchange_links": default_config.show_exchange_links,
+            "performance_mode": default_config.performance_mode,
+            "ui_refresh_interval": default_config.ui_refresh_interval,
             "tickers": [
                 {
                     "key": pref.key,
@@ -140,6 +165,7 @@ def _build_app_config(raw: Dict[str, object], default_config: AppConfig) -> AppC
     ui = raw.get("ui") or raw
     if not isinstance(ui, dict):
         ui = {}
+    performance_mode, ui_refresh_interval = _resolve_refresh_interval(ui, default_config)
     return AppConfig(
         max_visible=max(1, int(ui.get("max_visible", default_config.max_visible))),
         title_index=max(0, int(ui.get("title_index", default_config.title_index))),
@@ -148,6 +174,8 @@ def _build_app_config(raw: Dict[str, object], default_config: AppConfig) -> AppC
         menu_template=str(ui.get("menu_template", default_config.menu_template)),
         show_exchange_links=bool(ui.get("show_exchange_links", default_config.show_exchange_links)),
         ticker_preferences=_load_ticker_preferences(ui.get("tickers"), default_config.ticker_preferences),
+        ui_refresh_interval=ui_refresh_interval,
+        performance_mode=performance_mode,
     )
 
 

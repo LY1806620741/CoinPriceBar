@@ -1,7 +1,7 @@
 import unittest
 
 from coinpricebar.app import CoinPriceBarApp, _with_trend_suffix
-from coinpricebar.config import AppConfig, get_default_tickers
+from coinpricebar.config import AppConfig, _build_app_config, get_default_tickers
 from coinpricebar.sources.base import MarketSnapshot
 
 
@@ -34,6 +34,21 @@ class UIRenderTests(unittest.TestCase):
 
     def test_default_tickers_exist(self):
         self.assertGreaterEqual(len(get_default_tickers()), 2)
+
+    def test_default_config_contains_update_tuning_fields(self):
+        config = AppConfig.default()
+        self.assertGreaterEqual(config.ui_refresh_interval, 0.05)
+        self.assertEqual(config.performance_mode, "balanced")
+
+    def test_performance_preset_overrides_refresh_interval(self):
+        config = _build_app_config({"ui": {"performance_mode": "stable", "ui_refresh_interval": 0.1}}, AppConfig.default())
+        self.assertEqual(config.performance_mode, "stable")
+        self.assertEqual(config.ui_refresh_interval, 0.5)
+
+    def test_custom_performance_mode_uses_numeric_value(self):
+        config = _build_app_config({"ui": {"performance_mode": "custom", "ui_refresh_interval": 0.18}}, AppConfig.default())
+        self.assertEqual(config.performance_mode, "custom")
+        self.assertEqual(config.ui_refresh_interval, 0.18)
 
 
 if __name__ == "__main__":

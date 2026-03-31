@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable
 
-from .config import AppConfig, DEFAULT_CONFIG_PATH, TickerConfig, get_default_tickers, load_app_config
+from .config import AppConfig, DEFAULT_CONFIG_PATH, PERFORMANCE_PRESETS, TickerConfig, get_default_tickers, load_app_config
 
 
 class ConfigPanelServer:
@@ -115,6 +115,7 @@ class ConfigPanelServer:
             "config": self._serialize_config(config),
             "tickers": items,
             "configPath": str(DEFAULT_CONFIG_PATH),
+            "performancePresets": PERFORMANCE_PRESETS,
         }
 
     def _build_html(self) -> str:
@@ -129,13 +130,14 @@ class ConfigPanelServer:
     h1 { margin-bottom: 8px; }
     .hint { color: #666; margin-bottom: 18px; }
     .grid { display: grid; grid-template-columns: 180px 1fr; gap: 10px 14px; max-width: 860px; align-items: center; }
-    input[type='text'], input[type='number'] { width: 100%; padding: 8px; box-sizing: border-box; }
+    input[type='text'], input[type='number'], select { width: 100%; padding: 8px; box-sizing: border-box; }
     table { border-collapse: collapse; width: 100%; margin-top: 18px; }
     th, td { border-bottom: 1px solid #e5e5e5; padding: 8px; text-align: left; }
     .actions { margin-top: 20px; display: flex; gap: 12px; }
     button { padding: 10px 16px; cursor: pointer; }
     .status { margin-top: 12px; color: #0a7; }
     .error { color: #c33; }
+    .muted { color: #777; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -148,6 +150,16 @@ class ConfigPanelServer:
     <label for=\"menu_template\">菜单模板</label><input id=\"menu_template\" type=\"text\" />
     <label for=\"display_fields\">降级字段</label><input id=\"display_fields\" type=\"text\" />
     <label for=\"show_exchange_links\">显示交易所链接</label><input id=\"show_exchange_links\" type=\"checkbox\" />
+    <label for=\"performance_mode\">性能模式</label>
+    <div>
+      <select id=\"performance_mode\"></select>
+      <div class=\"muted\">稳定 / 平衡 / 实时 / 自定义</div>
+    </div>
+    <label for=\"ui_refresh_interval\">自定义刷新频率（秒）</label>
+    <div>
+      <input id=\"ui_refresh_interval\" type=\"number\" min=\"0.05\" step=\"0.01\" />
+      <div class=\"muted\">当性能模式为“自定义”时生效</div>
+    </div>
   </div>
 
   <h2>显示项配置</h2>
@@ -166,6 +178,19 @@ class ConfigPanelServer:
 
   <script>
     let current = null;
+    function fillPerformanceModes(presets, selectedMode) {
+      const select = document.getElementById('performance_mode');
+      select.innerHTML = '';
+      const labels = { stable: '稳定', balanced: '平衡', realtime: '实时', custom: '自定义' };
+      Object.keys(presets).forEach(key => {
+        const opt = document.createElement('option');
+        opt.value = key;
+        opt.textContent = `${labels[key] || key}${presets[key] ? ` (${presets[key]}s)` : ''}`;
+        opt.selected = key === selectedMode;
+        select.appendChild(opt);
+      });
+    }
+
     async function loadState() {
       const res = await fetch('/api/config');
       current = await res.json();
@@ -176,9 +201,11 @@ class ConfigPanelServer:
       document.getElementById('menu_template').value = ui.menu_template;
       document.getElementById('display_fields').value = ui.display_fields.join(',');
       document.getElementById('show_exchange_links').checked = !!ui.show_exchange_links;
+      fillPerformanceModes(current.performancePresets, ui.performance_mode || 'balanced');
+      document.getElementById('ui_refresh_interval').value = ui.ui_refresh_interval;
       const tbody = document.getElementById('ticker_rows');
       tbody.innerHTML = '';
-      current.tickers.sort((a, b) => a.order - b.order).forEach((ticker, index) => {
+      current.tickers.sort((a, b) => a.order - b.order).forEach((ticker) => {
         const row = document.createElement('tr');
         row.innerHTML = `
           <td><input type=\"checkbox\" data-field=\"visible\" data-key=\"${ticker.key}\" ${ticker.visible ? 'checked' : ''}></td>
@@ -219,6 +246,8 @@ class ConfigPanelServer:
           menu_template: document.getElementById('menu_template').value,
           display_fields: document.getElementById('display_fields').value.split(',').map(v => v.trim()).filter(Boolean),
           show_exchange_links: document.getElementById('show_exchange_links').checked,
+          performance_mode: document.getElementById('performance_mode').value,
+          ui_refresh_interval: Number(document.getElementById('ui_refresh_interval').value || 0.25),
           tickers,
         }
       };
@@ -246,4 +275,3 @@ class ConfigPanelServer:
 </body>
 </html>
 """
-

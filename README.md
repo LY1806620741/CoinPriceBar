@@ -66,6 +66,7 @@
     "title_template": "{exchange}:{symbol} {price}",
     "menu_template": "{exchange}:{symbol} {price} ({change_percent})",
     "show_exchange_links": true,
+    "ui_refresh_interval": 0.25,
     "tickers": [
       { "key": "kucoin::KCS-USDT", "visible": true, "order": 0, "pinned_title": true },
       { "key": "kucoin::BTC-USDT", "visible": true, "order": 1, "pinned_title": false },
@@ -89,6 +90,7 @@
 - `title_template`：菜单栏标题模板
 - `menu_template`：下拉菜单每一项模板
 - `show_exchange_links`：是否显示“打开交易所官网”入口
+- `ui_refresh_interval`：UI 刷新频率（秒），默认 `0.25`，值越小刷新越快但占用更高
 - `tickers`：UI 显示偏好，可配置每个默认监控项是否显示、显示顺序，以及是否置顶到菜单栏标题
 - 菜单支持 **UI配置编辑**、**打开配置文件** 和 **重载UI配置**，修改 `config.json` 后可直接重载生效（仅影响 UI 显示，不会改动监控源）
 

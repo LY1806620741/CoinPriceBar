@@ -71,6 +71,7 @@ Example:
     "title_template": "{exchange}:{symbol} {price}",
     "menu_template": "{exchange}:{symbol} {price} ({change_percent})",
     "show_exchange_links": true,
+    "ui_refresh_interval": 0.25,
     "tickers": [
       { "key": "kucoin::KCS-USDT", "visible": true, "order": 0, "pinned_title": true },
       { "key": "kucoin::BTC-USDT", "visible": true, "order": 1, "pinned_title": false },
@@ -94,6 +95,7 @@ Example:
 - `title_template`: menu bar title template
 - `menu_template`: dropdown item template
 - `show_exchange_links`: whether to show exchange home links in the menu
+- `ui_refresh_interval`: UI refresh interval in seconds; default `0.25`. Lower values refresh faster but use more CPU
 - `tickers`: UI display preferences for each default monitored item, including visibility, order, and title pinning
 
 The menu now supports **UI Config Editor**, **Open Config File**, and **Reload UI Config**.

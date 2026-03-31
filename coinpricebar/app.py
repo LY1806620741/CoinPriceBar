@@ -184,6 +184,8 @@ class CoinPriceBarApp(rumps.App):
         if isinstance(display_fields, list):
             config.display_fields = [str(field).strip() for field in display_fields if str(field).strip()]
         config.show_exchange_links = bool(ui.get("show_exchange_links", config.show_exchange_links))
+        config.performance_mode = str(ui.get("performance_mode", config.performance_mode)).strip().lower() or config.performance_mode
+        config.ui_refresh_interval = max(0.05, float(ui.get("ui_refresh_interval", config.ui_refresh_interval)))
         ticker_prefs = {}
         for index, item in enumerate(ui.get("tickers") or []):
             key = str(item.get("key", "")).strip().lower()
@@ -366,7 +368,7 @@ class CoinPriceBarApp(rumps.App):
             rumps.alert("错误", f"重载 UI 配置失败：{e}")
 
     def _start_ui_timer(self):
-        self.ui_timer = rumps.Timer(self._process_ui_queue, UI_UPDATE_INTERVAL)
+        self.ui_timer = rumps.Timer(self._process_ui_queue, self.config.ui_refresh_interval)
         self.ui_timer.start()
 
     def _on_price_update(self, exchange: str, symbol: str, price: float):
@@ -389,17 +391,7 @@ class CoinPriceBarApp(rumps.App):
         snapshot.is_first = False
         snapshot.has_error = False
         snapshot.status = self.status_by_exchange.get(exchange.lower(), snapshot.status)
-        is_visible = key in self.price_menu_items
-        logging.info(
-            f"价格更新命中: {key} | price={price:.4f} | change={change:.4f} | visible={is_visible}"
-        )
         self.ui_queue.put(lambda ticker_key=key: self._refresh_snapshot_ui(ticker_key))
-
-        if key in self.price_menu_items:
-            try:
-                self._refresh_snapshot_ui(key)
-            except Exception as e:
-                logging.warning(f"同步刷新菜单项失败，已回退到队列刷新: {e}")
 
     def _on_status_update(self, exchange: str, status: str):
         if self._quitting:
@@ -424,12 +416,10 @@ class CoinPriceBarApp(rumps.App):
 
         if self.active_tickers and key == self.active_tickers[self.title_ticker_index].key:
             self.title = self._render_text(snapshot, self.config.title_template, is_title=True)
-            logging.info(f"已刷新标题: {self.title}")
 
         item = self.price_menu_items.get(key)
         if item is not None:
             item.title = self._render_text(snapshot, self.config.menu_template)
-            logging.info(f"已刷新菜单项: {key} -> {item.title}")
         else:
             logging.info(f"价格已更新但当前不可见: {key}")
 
