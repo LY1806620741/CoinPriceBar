@@ -1,3 +1,4 @@
 rumps
 pyobjc
 kucoin-universal-sdk
+websocket-client

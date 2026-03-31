@@ -43,6 +43,14 @@ OPTIONS = {
         "AppKit",
         "Foundation",
         "kucoin_universal_sdk",
+        "coinpricebar",
+        "coinpricebar.main",
+        "coinpricebar.app",
+        "coinpricebar.config",
+        "coinpricebar.sources",
+        "coinpricebar.sources.kucoin",
+        "coinpricebar.sources.binance",
+        "coinpricebar.panel",
     ],
     "excludes": [
         "tkinter",
@@ -59,6 +67,7 @@ OPTIONS = {
     ],
     "packages": [
         "kucoin_universal_sdk",
+        "coinpricebar",
     ],
 }
 
