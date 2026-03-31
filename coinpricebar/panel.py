@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable
 
-from .config import AppConfig, DEFAULT_CONFIG_PATH, PERFORMANCE_PRESETS, TickerConfig, get_default_tickers, load_app_config
+from .config import AppConfig, DEFAULT_CONFIG_PATH, PERFORMANCE_PRESETS, SUPPORTED_EXCHANGES, SUPPORTED_LANGUAGES, TickerConfig, get_default_tickers, load_app_config
 
 
 class ConfigPanelServer:
@@ -106,6 +106,7 @@ class ConfigPanelServer:
                     "exchange": ticker.exchange,
                     "symbol": ticker.symbol,
                     "display_name": ticker.display_name,
+                    "enabled": ticker.enabled,
                     "visible": True if pref is None else pref.visible,
                     "order": index if pref is None else pref.order,
                     "pinned_title": False if pref is None else pref.pinned_title,
@@ -116,6 +117,8 @@ class ConfigPanelServer:
             "tickers": items,
             "configPath": str(DEFAULT_CONFIG_PATH),
             "performancePresets": PERFORMANCE_PRESETS,
+            "languages": sorted(SUPPORTED_LANGUAGES),
+            "exchanges": SUPPORTED_EXCHANGES,
         }
 
     def _build_html(self) -> str:
@@ -129,65 +132,226 @@ class ConfigPanelServer:
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 24px; color: #222; }
     h1 { margin-bottom: 8px; }
     .hint { color: #666; margin-bottom: 18px; }
-    .grid { display: grid; grid-template-columns: 180px 1fr; gap: 10px 14px; max-width: 860px; align-items: center; }
+    .grid { display: grid; grid-template-columns: 180px 1fr; gap: 10px 14px; max-width: 960px; align-items: center; }
     input[type='text'], input[type='number'], select { width: 100%; padding: 8px; box-sizing: border-box; }
+    input[type='checkbox'], input[type='radio'] { transform: scale(1.1); }
     table { border-collapse: collapse; width: 100%; margin-top: 18px; }
-    th, td { border-bottom: 1px solid #e5e5e5; padding: 8px; text-align: left; }
-    .actions { margin-top: 20px; display: flex; gap: 12px; }
+    th, td { border-bottom: 1px solid #e5e5e5; padding: 8px; text-align: left; vertical-align: middle; }
+    tr.dragging { opacity: 0.4; }
+    .actions { margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap; }
     button { padding: 10px 16px; cursor: pointer; }
     .status { margin-top: 12px; color: #0a7; }
     .error { color: #c33; }
     .muted { color: #777; font-size: 12px; }
+    .inline { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .exchange-grid { display: flex; gap: 18px; flex-wrap: wrap; }
+    .drag-handle { cursor: grab; color: #888; font-size: 18px; }
+    .section-title { margin-top: 28px; margin-bottom: 10px; }
   </style>
 </head>
 <body>
-  <h1>CoinPriceBar UI 配置面板</h1>
-  <div class=\"hint\">这里编辑的是 UI 展示配置。监控源仍然来自默认的交易对列表。</div>
+  <h1 id=\"title\">CoinPriceBar UI 配置面板</h1>
+  <div id=\"hint\" class=\"hint\">这里编辑的是 UI 展示配置与监控项配置。</div>
   <div class=\"grid\">
-    <label for=\"max_visible\">显示数量</label><input id=\"max_visible\" type=\"number\" min=\"1\" />
-    <label for=\"title_index\">标题索引</label><input id=\"title_index\" type=\"number\" min=\"0\" />
-    <label for=\"title_template\">标题模板</label><input id=\"title_template\" type=\"text\" />
-    <label for=\"menu_template\">菜单模板</label><input id=\"menu_template\" type=\"text\" />
-    <label for=\"display_fields\">降级字段</label><input id=\"display_fields\" type=\"text\" />
-    <label for=\"show_exchange_links\">显示交易所链接</label><input id=\"show_exchange_links\" type=\"checkbox\" />
-    <label for=\"performance_mode\">性能模式</label>
+    <label for=\"language\" data-i18n=\"language\">语言</label>
+    <select id=\"language\"></select>
+
+    <label data-i18n=\"exchange_enable\">启用交易所</label>
+    <div id=\"exchange_flags\" class=\"exchange-grid\"></div>
+
+    <label for=\"max_visible\" data-i18n=\"max_visible\">显示数量</label><input id=\"max_visible\" type=\"number\" min=\"1\" />
+    <label for=\"title_index\" data-i18n=\"title_index\">标题索引</label><input id=\"title_index\" type=\"number\" min=\"0\" />
+    <label for=\"title_template\" data-i18n=\"title_template\">标题模板</label><input id=\"title_template\" type=\"text\" />
+    <label for=\"menu_template\" data-i18n=\"menu_template\">菜单模板</label><input id=\"menu_template\" type=\"text\" />
+    <label for=\"display_fields\" data-i18n=\"display_fields\">降级字段</label><input id=\"display_fields\" type=\"text\" />
+    <label for=\"show_exchange_links\" data-i18n=\"show_exchange_links\">显示交易所链接</label><input id=\"show_exchange_links\" type=\"checkbox\" />
+    <label for=\"performance_mode\" data-i18n=\"performance_mode\">性能模式</label>
     <div>
       <select id=\"performance_mode\"></select>
-      <div class=\"muted\">稳定 / 平衡 / 实时 / 自定义</div>
+      <div id=\"performance_hint\" class=\"muted\">稳定 / 平衡 / 实时 / 自定义</div>
     </div>
-    <label for=\"ui_refresh_interval\">自定义刷新频率（秒）</label>
+    <label for=\"ui_refresh_interval\" data-i18n=\"refresh_interval\">自定义刷新频率（秒）</label>
     <div>
       <input id=\"ui_refresh_interval\" type=\"number\" min=\"0.05\" step=\"0.01\" />
-      <div class=\"muted\">当性能模式为“自定义”时生效</div>
+      <div id=\"custom_hint\" class=\"muted\">当性能模式为“自定义”时生效</div>
     </div>
   </div>
 
-  <h2>显示项配置</h2>
+  <h2 class=\"section-title\" data-i18n=\"ticker_list\">监控交易对配置</h2>
   <table>
     <thead>
-      <tr><th>显示</th><th>置顶标题</th><th>顺序</th><th>交易所</th><th>交易对</th><th>名称</th></tr>
+      <tr>
+        <th></th>
+        <th data-i18n=\"enabled\">启用监控</th>
+        <th data-i18n=\"visible\">显示</th>
+        <th data-i18n=\"pinned_title\">置顶标题</th>
+        <th data-i18n=\"exchange\">交易所</th>
+        <th data-i18n=\"symbol\">交易对</th>
+        <th data-i18n=\"display_name\">名称</th>
+        <th data-i18n=\"remove\">删除</th>
+      </tr>
     </thead>
     <tbody id=\"ticker_rows\"></tbody>
   </table>
 
   <div class=\"actions\">
-    <button id=\"save_btn\">保存并应用</button>
-    <button id=\"reload_btn\">重新读取当前配置</button>
+    <button id=\"add_ticker_btn\" data-i18n=\"add_ticker\">添加交易对</button>
+    <button id=\"save_btn\" data-i18n=\"save\">保存并应用</button>
+    <button id=\"reload_btn\" data-i18n=\"reload\">重新读取当前配置</button>
   </div>
   <div id=\"status\" class=\"status\"></div>
 
   <script>
     let current = null;
+    let tickerRows = [];
+    const I18N = {
+      'zh-CN': {
+        title: 'CoinPriceBar UI 配置面板', hint: '这里编辑的是 UI 展示配置与监控项配置。',
+        language: '语言', exchange_enable: '启用交易所', max_visible: '显示数量', title_index: '标题索引',
+        title_template: '标题模板', menu_template: '菜单模板', display_fields: '降级字段',
+        show_exchange_links: '显示交易所链接', performance_mode: '性能模式', refresh_interval: '自定义刷新频率（秒）',
+        ticker_list: '监控交易对配置', enabled: '启用监控', visible: '显示', pinned_title: '置顶标题', exchange: '交易所',
+        symbol: '交易对', display_name: '名称', remove: '删除', add_ticker: '添加交易对', save: '保存并应用', reload: '重新读取当前配置',
+        performance_hint: '稳定 / 平衡 / 实时 / 自定义', custom_hint: '当性能模式为“自定义”时生效',
+        stable: '稳定', balanced: '平衡', realtime: '实时', custom: '自定义', remove_btn: '删除',
+      },
+      'en-US': {
+        title: 'CoinPriceBar UI Config Panel', hint: 'Edit UI display settings and monitored tickers here.',
+        language: 'Language', exchange_enable: 'Enabled exchanges', max_visible: 'Visible count', title_index: 'Title index',
+        title_template: 'Title template', menu_template: 'Menu template', display_fields: 'Fallback fields',
+        show_exchange_links: 'Show exchange links', performance_mode: 'Performance mode', refresh_interval: 'Custom refresh interval (seconds)',
+        ticker_list: 'Monitored tickers', enabled: 'Enabled', visible: 'Visible', pinned_title: 'Pin to title', exchange: 'Exchange',
+        symbol: 'Symbol', display_name: 'Name', remove: 'Remove', add_ticker: 'Add ticker', save: 'Save & apply', reload: 'Reload config',
+        performance_hint: 'Stable / Balanced / Realtime / Custom', custom_hint: 'Only used when performance mode is Custom',
+        stable: 'Stable', balanced: 'Balanced', realtime: 'Realtime', custom: 'Custom', remove_btn: 'Remove',
+      }
+    };
+
+    function tr(key) {
+      const lang = document.getElementById('language').value || (current?.config?.ui?.language) || 'zh-CN';
+      return (I18N[lang] && I18N[lang][key]) || key;
+    }
+
+    function applyI18n() {
+      document.getElementById('title').textContent = tr('title');
+      document.getElementById('hint').textContent = tr('hint');
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.dataset.i18n;
+        el.textContent = tr(key);
+      });
+      document.getElementById('performance_hint').textContent = tr('performance_hint');
+      document.getElementById('custom_hint').textContent = tr('custom_hint');
+      fillPerformanceModes(current.performancePresets, document.getElementById('performance_mode').value || current.config.ui.performance_mode || 'balanced');
+      renderTickerRows();
+    }
+
+    function fillLanguages(languages, selected) {
+      const select = document.getElementById('language');
+      select.innerHTML = '';
+      languages.forEach(lang => {
+        const opt = document.createElement('option');
+        opt.value = lang;
+        opt.textContent = lang;
+        opt.selected = lang === selected;
+        select.appendChild(opt);
+      });
+    }
+
+    function fillExchangeFlags(exchanges, enabledMap) {
+      const wrap = document.getElementById('exchange_flags');
+      wrap.innerHTML = '';
+      Object.entries(exchanges).forEach(([key, label]) => {
+        const row = document.createElement('label');
+        row.className = 'inline';
+        row.innerHTML = `<input type=\"checkbox\" data-exchange=\"${key}\" ${enabledMap?.[key]?.enabled !== false ? 'checked' : ''}> ${label}`;
+        wrap.appendChild(row);
+      });
+    }
+
     function fillPerformanceModes(presets, selectedMode) {
       const select = document.getElementById('performance_mode');
       select.innerHTML = '';
-      const labels = { stable: '稳定', balanced: '平衡', realtime: '实时', custom: '自定义' };
       Object.keys(presets).forEach(key => {
         const opt = document.createElement('option');
         opt.value = key;
-        opt.textContent = `${labels[key] || key}${presets[key] ? ` (${presets[key]}s)` : ''}`;
+        opt.textContent = `${tr(key)}${presets[key] ? ` (${presets[key]}s)` : ''}`;
         opt.selected = key === selectedMode;
         select.appendChild(opt);
+      });
+    }
+
+    function enableCustomRefreshInput() {
+      document.getElementById('ui_refresh_interval').disabled = document.getElementById('performance_mode').value !== 'custom';
+    }
+
+    function attachDragHandlers(row) {
+      row.draggable = true;
+      row.addEventListener('dragstart', () => row.classList.add('dragging'));
+      row.addEventListener('dragend', () => {
+        row.classList.remove('dragging');
+        syncRowOrder();
+      });
+      row.addEventListener('dragover', event => {
+        event.preventDefault();
+        const tbody = document.getElementById('ticker_rows');
+        const dragging = tbody.querySelector('.dragging');
+        if (!dragging || dragging === row) return;
+        const rect = row.getBoundingClientRect();
+        const insertAfter = event.clientY > rect.top + rect.height / 2;
+        tbody.insertBefore(dragging, insertAfter ? row.nextSibling : row);
+      });
+    }
+
+    function syncRowOrder() {
+      const rows = [...document.querySelectorAll('#ticker_rows tr')];
+      tickerRows = rows.map((row, index) => ({ ...JSON.parse(row.dataset.item), order: index }));
+      renderTickerRows(false);
+    }
+
+    function renderTickerRows(reset = true) {
+      const tbody = document.getElementById('ticker_rows');
+      if (reset) tickerRows = [...tickerRows].sort((a, b) => a.order - b.order);
+      tbody.innerHTML = '';
+      tickerRows.forEach((ticker, index) => {
+        const row = document.createElement('tr');
+        row.dataset.item = JSON.stringify({ ...ticker, order: index });
+        row.innerHTML = `
+          <td class=\"drag-handle\">☰</td>
+          <td><input type=\"checkbox\" data-field=\"enabled\" ${ticker.enabled ? 'checked' : ''}></td>
+          <td><input type=\"checkbox\" data-field=\"visible\" ${ticker.visible ? 'checked' : ''}></td>
+          <td><input type=\"radio\" name=\"pinned_title\" data-field=\"pinned_title\" ${ticker.pinned_title ? 'checked' : ''}></td>
+          <td>
+            <select data-field=\"exchange\">${Object.entries(current.exchanges).map(([key, label]) => `<option value=\"${key}\" ${ticker.exchange === key ? 'selected' : ''}>${label}</option>`).join('')}</select>
+          </td>
+          <td><input type=\"text\" data-field=\"symbol\" value=\"${ticker.symbol || ''}\"></td>
+          <td><input type=\"text\" data-field=\"display_name\" value=\"${ticker.display_name || ''}\"></td>
+          <td><button type=\"button\" data-action=\"remove\">${tr('remove_btn')}</button></td>`;
+        attachDragHandlers(row);
+        row.querySelectorAll('input,select').forEach(input => {
+          input.addEventListener('change', () => {
+            const field = input.dataset.field;
+            const item = JSON.parse(row.dataset.item);
+            if (field === 'enabled' || field === 'visible' || field === 'pinned_title') item[field] = input.checked;
+            else item[field] = input.value;
+            row.dataset.item = JSON.stringify(item);
+            if (field === 'pinned_title' && input.checked) {
+              document.querySelectorAll('#ticker_rows input[data-field="pinned_title"]').forEach(other => {
+                if (other !== input) other.checked = false;
+                const otherRow = other.closest('tr');
+                const otherItem = JSON.parse(otherRow.dataset.item);
+                if (other !== input) otherItem.pinned_title = false;
+                otherRow.dataset.item = JSON.stringify(otherItem);
+              });
+            }
+            syncRowOrder();
+          });
+        });
+        row.querySelector('[data-action="remove"]').addEventListener('click', () => {
+          tickerRows.splice(index, 1);
+          tickerRows = tickerRows.map((item, idx) => ({ ...item, order: idx }));
+          renderTickerRows();
+        });
+        tbody.appendChild(row);
       });
     }
 
@@ -195,6 +359,8 @@ class ConfigPanelServer:
       const res = await fetch('/api/config');
       current = await res.json();
       const ui = current.config.ui;
+      fillLanguages(current.languages, ui.language || 'zh-CN');
+      fillExchangeFlags(current.exchanges, ui.exchanges || {});
       document.getElementById('max_visible').value = ui.max_visible;
       document.getElementById('title_index').value = ui.title_index;
       document.getElementById('title_template').value = ui.title_template;
@@ -203,19 +369,9 @@ class ConfigPanelServer:
       document.getElementById('show_exchange_links').checked = !!ui.show_exchange_links;
       fillPerformanceModes(current.performancePresets, ui.performance_mode || 'balanced');
       document.getElementById('ui_refresh_interval').value = ui.ui_refresh_interval;
-      const tbody = document.getElementById('ticker_rows');
-      tbody.innerHTML = '';
-      current.tickers.sort((a, b) => a.order - b.order).forEach((ticker) => {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-          <td><input type=\"checkbox\" data-field=\"visible\" data-key=\"${ticker.key}\" ${ticker.visible ? 'checked' : ''}></td>
-          <td><input type=\"radio\" name=\"pinned_title\" data-field=\"pinned_title\" data-key=\"${ticker.key}\" ${ticker.pinned_title ? 'checked' : ''}></td>
-          <td><input type=\"number\" min=\"0\" value=\"${ticker.order}\" data-field=\"order\" data-key=\"${ticker.key}\" style=\"width:70px\"></td>
-          <td>${ticker.exchange}</td>
-          <td>${ticker.symbol}</td>
-          <td>${ticker.display_name || ''}</td>`;
-        tbody.appendChild(row);
-      });
+      tickerRows = current.tickers.map((ticker, index) => ({ ...ticker, order: ticker.order ?? index }));
+      enableCustomRefreshInput();
+      applyI18n();
       setStatus(`已读取配置：${current.configPath}`);
     }
 
@@ -226,20 +382,26 @@ class ConfigPanelServer:
     }
 
     function collectPayload() {
-      const tickers = [];
-      document.querySelectorAll('#ticker_rows input').forEach(input => {
-        const key = input.dataset.key;
-        let ticker = tickers.find(item => item.key === key);
-        if (!ticker) {
-          ticker = { key, visible: false, pinned_title: false, order: 0 };
-          tickers.push(ticker);
-        }
-        if (input.dataset.field === 'visible') ticker.visible = input.checked;
-        if (input.dataset.field === 'pinned_title') ticker.pinned_title = input.checked;
-        if (input.dataset.field === 'order') ticker.order = Number(input.value || 0);
+      syncRowOrder();
+      const tickers = tickerRows.map(item => ({
+        exchange: item.exchange,
+        symbol: item.symbol,
+        display_name: item.display_name,
+        enabled: !!item.enabled,
+      }));
+      const ticker_preferences = tickerRows.map((item, index) => ({
+        key: `${String(item.exchange).toLowerCase()}::${String(item.symbol).trim().toUpperCase().replaceAll('_', '-')}`,
+        visible: !!item.visible,
+        pinned_title: !!item.pinned_title,
+        order: index,
+      }));
+      const exchanges = {};
+      document.querySelectorAll('#exchange_flags input[data-exchange]').forEach(input => {
+        exchanges[input.dataset.exchange] = { enabled: input.checked };
       });
       return {
         ui: {
+          language: document.getElementById('language').value,
           max_visible: Number(document.getElementById('max_visible').value || 1),
           title_index: Number(document.getElementById('title_index').value || 0),
           title_template: document.getElementById('title_template').value,
@@ -248,7 +410,9 @@ class ConfigPanelServer:
           show_exchange_links: document.getElementById('show_exchange_links').checked,
           performance_mode: document.getElementById('performance_mode').value,
           ui_refresh_interval: Number(document.getElementById('ui_refresh_interval').value || 0.25),
+          exchanges,
           tickers,
+          ticker_preferences,
         }
       };
     }
@@ -268,6 +432,12 @@ class ConfigPanelServer:
       await loadState();
     }
 
+    document.getElementById('language').addEventListener('change', applyI18n);
+    document.getElementById('performance_mode').addEventListener('change', () => { enableCustomRefreshInput(); applyI18n(); });
+    document.getElementById('add_ticker_btn').addEventListener('click', () => {
+      tickerRows.push({ exchange: 'kucoin', symbol: 'BTC-USDT', display_name: '', enabled: true, visible: true, pinned_title: false, order: tickerRows.length });
+      renderTickerRows();
+    });
     document.getElementById('save_btn').addEventListener('click', saveState);
     document.getElementById('reload_btn').addEventListener('click', loadState);
     loadState().catch(err => setStatus(err.message, true));

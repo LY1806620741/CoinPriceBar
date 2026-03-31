@@ -1,7 +1,7 @@
 import json
 import logging
 import traceback
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, List
 
@@ -31,6 +31,12 @@ PERFORMANCE_PRESETS = {
     "custom": None,
 }
 DEFAULT_PERFORMANCE_MODE = "balanced"
+SUPPORTED_LANGUAGES = {"zh-CN", "en-US"}
+DEFAULT_LANGUAGE = "zh-CN"
+SUPPORTED_EXCHANGES = {
+    "kucoin": "KuCoin",
+    "binance": "Binance",
+}
 
 
 @dataclass
@@ -58,6 +64,11 @@ class UITickerPreference:
 
 
 @dataclass
+class ExchangeConfig:
+    enabled: bool = True
+
+
+@dataclass
 class AppConfig:
     max_visible: int = 3
     title_index: int = 0
@@ -68,12 +79,16 @@ class AppConfig:
     ticker_preferences: Dict[str, UITickerPreference] = field(default_factory=dict)
     ui_refresh_interval: float = 0.25
     performance_mode: str = DEFAULT_PERFORMANCE_MODE
+    language: str = DEFAULT_LANGUAGE
+    exchanges: Dict[str, ExchangeConfig] = field(default_factory=lambda: {name: ExchangeConfig(enabled=True) for name in SUPPORTED_EXCHANGES})
+    tickers: List[TickerConfig] = field(default_factory=list)
 
     @classmethod
     def default(cls) -> "AppConfig":
+        ticker_items = get_default_tickers()
         preferences = {}
-        for index, (exchange, symbol, _) in enumerate(DEFAULT_TICKERS):
-            key = f"{exchange.lower()}::{normalize_symbol(symbol)}"
+        for index, ticker in enumerate(ticker_items):
+            key = ticker.key
             preferences[key] = UITickerPreference(key=key, visible=True, order=index, pinned_title=index == 0)
         return cls(
             max_visible=4,
@@ -85,6 +100,9 @@ class AppConfig:
             ticker_preferences=preferences,
             ui_refresh_interval=PERFORMANCE_PRESETS[DEFAULT_PERFORMANCE_MODE],
             performance_mode=DEFAULT_PERFORMANCE_MODE,
+            language=DEFAULT_LANGUAGE,
+            exchanges={name: ExchangeConfig(enabled=True) for name in SUPPORTED_EXCHANGES},
+            tickers=ticker_items,
         )
 
 
@@ -104,6 +122,11 @@ def _normalize_performance_mode(mode: object) -> str:
     return mode_str if mode_str in PERFORMANCE_PRESETS else DEFAULT_PERFORMANCE_MODE
 
 
+def _normalize_language(language: object) -> str:
+    value = str(language or DEFAULT_LANGUAGE).strip()
+    return value if value in SUPPORTED_LANGUAGES else DEFAULT_LANGUAGE
+
+
 def _resolve_refresh_interval(ui: dict, default_config: AppConfig) -> tuple[str, float]:
     mode = _normalize_performance_mode(ui.get("performance_mode", default_config.performance_mode))
     custom_value = max(0.05, float(ui.get("ui_refresh_interval", default_config.ui_refresh_interval)))
@@ -111,9 +134,55 @@ def _resolve_refresh_interval(ui: dict, default_config: AppConfig) -> tuple[str,
     return mode, (custom_value if preset_value is None else float(preset_value))
 
 
+def _load_exchange_configs(raw: object, fallback: Dict[str, ExchangeConfig]) -> Dict[str, ExchangeConfig]:
+    configs = {name: ExchangeConfig(enabled=config.enabled) for name, config in fallback.items()}
+    if not isinstance(raw, dict):
+        return configs
+    for name in SUPPORTED_EXCHANGES:
+        item = raw.get(name)
+        if isinstance(item, dict):
+            configs[name] = ExchangeConfig(enabled=bool(item.get("enabled", configs[name].enabled)))
+    return configs
+
+
+def _load_ticker_configs(raw_tickers: object) -> List[TickerConfig]:
+    if not isinstance(raw_tickers, list):
+        return get_default_tickers()
+    items: List[TickerConfig] = []
+    for item in raw_tickers:
+        if not isinstance(item, dict):
+            continue
+        exchange = str(item.get("exchange", "")).strip().lower()
+        symbol = normalize_symbol(str(item.get("symbol", "")))
+        if exchange not in SUPPORTED_EXCHANGES or not symbol:
+            continue
+        items.append(
+            TickerConfig(
+                exchange=exchange,
+                symbol=symbol,
+                enabled=bool(item.get("enabled", True)),
+                display_name=(str(item.get("display_name", "")).strip() or None),
+            )
+        )
+    return items or get_default_tickers()
+
+
+def _serialize_tickers(tickers: List[TickerConfig]) -> List[Dict[str, object]]:
+    return [
+        {
+            "exchange": ticker.exchange,
+            "symbol": ticker.normalized_symbol,
+            "display_name": ticker.display_name,
+            "enabled": ticker.enabled,
+        }
+        for ticker in tickers
+    ]
+
+
 def _serialize_default_config(default_config: AppConfig) -> Dict[str, object]:
     return {
         "ui": {
+            "language": default_config.language,
             "max_visible": default_config.max_visible,
             "title_index": default_config.title_index,
             "display_fields": default_config.display_fields,
@@ -122,7 +191,9 @@ def _serialize_default_config(default_config: AppConfig) -> Dict[str, object]:
             "show_exchange_links": default_config.show_exchange_links,
             "performance_mode": default_config.performance_mode,
             "ui_refresh_interval": default_config.ui_refresh_interval,
-            "tickers": [
+            "exchanges": {name: asdict(config) for name, config in default_config.exchanges.items()},
+            "tickers": _serialize_tickers(default_config.tickers),
+            "ticker_preferences": [
                 {
                     "key": pref.key,
                     "visible": pref.visible,
@@ -166,6 +237,13 @@ def _build_app_config(raw: Dict[str, object], default_config: AppConfig) -> AppC
     if not isinstance(ui, dict):
         ui = {}
     performance_mode, ui_refresh_interval = _resolve_refresh_interval(ui, default_config)
+    tickers = _load_ticker_configs(ui.get("tickers"))
+    fallback_prefs = {}
+    for index, ticker in enumerate(tickers):
+        fallback_prefs[ticker.key.lower()] = default_config.ticker_preferences.get(
+            ticker.key.lower(),
+            UITickerPreference(key=ticker.key.lower(), visible=ticker.enabled, order=index, pinned_title=index == 0),
+        )
     return AppConfig(
         max_visible=max(1, int(ui.get("max_visible", default_config.max_visible))),
         title_index=max(0, int(ui.get("title_index", default_config.title_index))),
@@ -173,9 +251,12 @@ def _build_app_config(raw: Dict[str, object], default_config: AppConfig) -> AppC
         title_template=str(ui.get("title_template", default_config.title_template)),
         menu_template=str(ui.get("menu_template", default_config.menu_template)),
         show_exchange_links=bool(ui.get("show_exchange_links", default_config.show_exchange_links)),
-        ticker_preferences=_load_ticker_preferences(ui.get("tickers"), default_config.ticker_preferences),
+        ticker_preferences=_load_ticker_preferences(ui.get("ticker_preferences") or ui.get("tickers"), fallback_prefs),
         ui_refresh_interval=ui_refresh_interval,
         performance_mode=performance_mode,
+        language=_normalize_language(ui.get("language", default_config.language)),
+        exchanges=_load_exchange_configs(ui.get("exchanges"), default_config.exchanges),
+        tickers=tickers,
     )
 
 

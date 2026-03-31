@@ -37,9 +37,11 @@ class BasePriceSource:
     def stop(self) -> None:
         raise NotImplementedError
 
+    def list_symbols(self) -> list[str]:
+        return []
+
     def _emit_price(self, symbol: str, price: float):
         self.update_callback(self.source_name, normalize_symbol(symbol), price)
 
     def _emit_status(self, status: str):
         self.status_callback(self.source_name, status)
-

@@ -151,8 +151,11 @@ class CoinPriceBarApp(rumps.App):
         super().__init__(name, quit_button=None)
         self.config = config or AppConfig.default()
         self.config_path = DEFAULT_CONFIG_PATH
-        self.all_tickers = tickers or get_default_tickers()
-        self.monitored_tickers = [ticker for ticker in self.all_tickers if ticker.enabled]
+        self.all_tickers = tickers or list(self.config.tickers or get_default_tickers())
+        self.monitored_tickers = [
+            ticker for ticker in self.all_tickers
+            if ticker.enabled and self.config.exchanges.get(ticker.exchange.lower()) and self.config.exchanges[ticker.exchange.lower()].enabled
+        ]
         self.active_tickers = self._visible_tickers()
         self.title_ticker_index = self._resolve_title_ticker_index()
         self.ui_queue = queue.Queue()
@@ -176,6 +179,7 @@ class CoinPriceBarApp(rumps.App):
     def _save_ui_config_payload(self, payload: dict) -> AppConfig:
         ui = payload.get("ui") or {}
         config = load_app_config(self.config_path)
+        config.language = str(ui.get("language", config.language)).strip() or config.language
         config.max_visible = max(1, int(ui.get("max_visible", config.max_visible)))
         config.title_index = max(0, int(ui.get("title_index", config.title_index)))
         config.title_template = str(ui.get("title_template", config.title_template))
@@ -186,8 +190,37 @@ class CoinPriceBarApp(rumps.App):
         config.show_exchange_links = bool(ui.get("show_exchange_links", config.show_exchange_links))
         config.performance_mode = str(ui.get("performance_mode", config.performance_mode)).strip().lower() or config.performance_mode
         config.ui_refresh_interval = max(0.05, float(ui.get("ui_refresh_interval", config.ui_refresh_interval)))
+
+        exchanges_payload = ui.get("exchanges") or {}
+        if isinstance(exchanges_payload, dict):
+            for name, exchange_config in config.exchanges.items():
+                item = exchanges_payload.get(name)
+                if isinstance(item, dict):
+                    exchange_config.enabled = bool(item.get("enabled", exchange_config.enabled))
+
+        tickers_payload = ui.get("tickers") or []
+        if isinstance(tickers_payload, list):
+            updated_tickers = []
+            for item in tickers_payload:
+                if not isinstance(item, dict):
+                    continue
+                exchange = str(item.get("exchange", "")).strip().lower()
+                symbol = normalize_symbol(str(item.get("symbol", "")))
+                if not exchange or not symbol:
+                    continue
+                updated_tickers.append(
+                    TickerConfig(
+                        exchange=exchange,
+                        symbol=symbol,
+                        enabled=bool(item.get("enabled", True)),
+                        display_name=(str(item.get("display_name", "")).strip() or None),
+                    )
+                )
+            if updated_tickers:
+                config.tickers = updated_tickers
+
         ticker_prefs = {}
-        for index, item in enumerate(ui.get("tickers") or []):
+        for index, item in enumerate(ui.get("ticker_preferences") or []):
             key = str(item.get("key", "")).strip().lower()
             if not key:
                 continue
@@ -199,10 +232,22 @@ class CoinPriceBarApp(rumps.App):
             )
         if ticker_prefs:
             config.ticker_preferences = ticker_prefs
+
         from .config import _write_default_config
         _write_default_config(self.config_path, config)
         self.config = load_app_config(self.config_path)
+        self.all_tickers = list(self.config.tickers or get_default_tickers())
+        self.monitor.stop_all()
+        self.monitor = MultiSourcePriceMonitor(
+            [
+                ticker for ticker in self.all_tickers
+                if ticker.enabled and self.config.exchanges.get(ticker.exchange.lower()) and self.config.exchanges[ticker.exchange.lower()].enabled
+            ],
+            self._on_price_update,
+            self._on_status_update,
+        )
         self._rebuild_ui_from_config()
+        self.monitor.start_all()
         return self.config
 
     def _get_ticker_preference(self, ticker: TickerConfig) -> UITickerPreference:
@@ -228,7 +273,10 @@ class CoinPriceBarApp(rumps.App):
         return min(self.config.title_index, len(self.active_tickers) - 1)
 
     def _rebuild_active_tickers(self):
-        self.monitored_tickers = [ticker for ticker in self.all_tickers if ticker.enabled]
+        self.monitored_tickers = [
+            ticker for ticker in self.all_tickers
+            if ticker.enabled and self.config.exchanges.get(ticker.exchange.lower()) and self.config.exchanges[ticker.exchange.lower()].enabled
+        ]
         self.active_tickers = self._visible_tickers()
         self.title_ticker_index = self._resolve_title_ticker_index()
 

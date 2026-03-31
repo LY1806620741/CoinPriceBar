@@ -1,6 +1,7 @@
 import json
 import logging
 import traceback
+from urllib.request import urlopen
 
 import websocket
 
@@ -8,6 +9,7 @@ from ..config import normalize_symbol
 from .base import BasePriceSource
 
 BINANCE_WS_URL = "wss://stream.binance.com:9443/stream?streams={}"
+BINANCE_INFO_URL = "https://api.binance.com/api/v3/exchangeInfo"
 
 
 def _safe_float(value, default: float = 0.0) -> float:
@@ -106,3 +108,20 @@ class BinancePriceSource(BasePriceSource):
                 logging.info("Binance WebSocket 已请求关闭")
             except Exception as e:
                 logging.error(f"停止 Binance WS 失败: {e}\n{traceback.format_exc()}")
+
+    def list_symbols(self) -> list[str]:
+        try:
+            with urlopen(BINANCE_INFO_URL, timeout=10) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+            items = []
+            for symbol_info in payload.get("symbols", []):
+                if symbol_info.get("status") != "TRADING":
+                    continue
+                base = str(symbol_info.get("baseAsset", "")).upper()
+                quote = str(symbol_info.get("quoteAsset", "")).upper()
+                if base and quote:
+                    items.append(f"{base}-{quote}")
+            return sorted(set(items))
+        except Exception as e:
+            logging.warning(f"获取 Binance 交易对列表失败: {e}")
+            return []

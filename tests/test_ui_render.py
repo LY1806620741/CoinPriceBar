@@ -2,6 +2,7 @@ import unittest
 
 from coinpricebar.app import CoinPriceBarApp, _with_trend_suffix
 from coinpricebar.config import AppConfig, _build_app_config, get_default_tickers
+from coinpricebar.sources import BinancePriceSource, KucoinPriceSource
 from coinpricebar.sources.base import MarketSnapshot
 
 
@@ -49,6 +50,33 @@ class UIRenderTests(unittest.TestCase):
         config = _build_app_config({"ui": {"performance_mode": "custom", "ui_refresh_interval": 0.18}}, AppConfig.default())
         self.assertEqual(config.performance_mode, "custom")
         self.assertEqual(config.ui_refresh_interval, 0.18)
+
+    def test_config_supports_language_exchange_flags_and_custom_tickers(self):
+        config = _build_app_config(
+            {
+                "ui": {
+                    "language": "en-US",
+                    "exchanges": {"kucoin": {"enabled": False}, "binance": {"enabled": True}},
+                    "tickers": [
+                        {"exchange": "binance", "symbol": "SOL-USDT", "display_name": "SOL", "enabled": True},
+                    ],
+                    "ticker_preferences": [
+                        {"key": "binance::SOL-USDT", "visible": True, "order": 0, "pinned_title": True},
+                    ],
+                }
+            },
+            AppConfig.default(),
+        )
+        self.assertEqual(config.language, "en-US")
+        self.assertFalse(config.exchanges["kucoin"].enabled)
+        self.assertTrue(config.exchanges["binance"].enabled)
+        self.assertEqual(len(config.tickers), 1)
+        self.assertEqual(config.tickers[0].key, "binance::SOL-USDT")
+        self.assertIn("binance::sol-usdt", config.ticker_preferences)
+
+    def test_sources_expose_symbol_list_api(self):
+        self.assertTrue(hasattr(BinancePriceSource(lambda *_: None, lambda *_: None), "list_symbols"))
+        self.assertTrue(hasattr(KucoinPriceSource(lambda *_: None, lambda *_: None), "list_symbols"))
 
 
 if __name__ == "__main__":

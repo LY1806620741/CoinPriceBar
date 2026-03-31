@@ -1,8 +1,10 @@
+import json
 import logging
 import os
 import threading
 import time
 import traceback
+from urllib.request import urlopen
 
 from kucoin_universal_sdk.api import DefaultClient
 from kucoin_universal_sdk.generate.spot.spot_public import SpotPublicWS, TickerEvent
@@ -16,6 +18,8 @@ from kucoin_universal_sdk.model import (
 )
 
 from .base import BasePriceSource
+
+KUCOIN_SYMBOLS_URL = "https://api.kucoin.com/api/v2/symbols"
 
 UI_UPDATE_INTERVAL = 0.1
 THREAD_JOIN_TIMEOUT = 2
@@ -161,3 +165,19 @@ class KucoinPriceSource(BasePriceSource):
                     svc.close()
         except Exception as e:
             logging.warning(f"关闭 KuCoin ws_service 失败或无此API: {e}")
+
+    def list_symbols(self) -> list[str]:
+        try:
+            with urlopen(KUCOIN_SYMBOLS_URL, timeout=10) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+            items = []
+            for symbol_info in payload.get("data", []):
+                if not symbol_info.get("enableTrading", False):
+                    continue
+                symbol = str(symbol_info.get("symbol", "")).upper().replace("_", "-")
+                if symbol:
+                    items.append(symbol)
+            return sorted(set(items))
+        except Exception as e:
+            logging.warning(f"获取 KuCoin 交易对列表失败: {e}")
+            return []

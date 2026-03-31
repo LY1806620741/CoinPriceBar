@@ -22,6 +22,10 @@ bootstrap:
 run:
   {{python}} KCSApp.py
 
+# Run the menu bar app with debug logging enabled
+run-debug:
+  PYTHONLOGLEVEL=DEBUG {{python}} KCSApp.py
+
 # Run the standard test suite
 test:
   {{unittest}}
@@ -50,6 +54,10 @@ logs:
 # Open the UI config file in the default editor
 open-config:
   {{python}} -c "from pathlib import Path; import webbrowser; path = Path('config.json').resolve(); path.write_text('{\\n  \"ui\": {}\\n}\\n', encoding='utf-8') if not path.exists() else None; webbrowser.open(path.as_uri())"
+
+# Print a small sample of discoverable symbols for each exchange
+symbols:
+  {{python}} -c "from coinpricebar.sources import BinancePriceSource, KucoinPriceSource; sources=(KucoinPriceSource, BinancePriceSource); [print(cls.source_name, len((symbols:=cls(lambda *_: None, lambda *_: None).list_symbols()[:20])), symbols) for cls in sources]"
 
 # Run install + tests as a quick local verification
 check: install test
