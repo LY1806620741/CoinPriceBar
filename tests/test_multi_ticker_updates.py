@@ -15,6 +15,11 @@ class DummyApp:
     pass
 
 
+class FalsyDummyItem(DummyItem):
+    def __bool__(self):
+        return False
+
+
 class MultiTickerUpdateTests(unittest.TestCase):
     def setUp(self):
         self.app = DummyApp()
@@ -91,13 +96,37 @@ class MultiTickerUpdateTests(unittest.TestCase):
         self.app.price_menu_items[target_key].title = "Binance:ETH: 加载中..."
 
         CoinPriceBarApp._on_price_update(self.app, "binance", "ETH-USDT", 66.66)
-        self.assertEqual(self.app.ui_queue.qsize(), 1)
-
-        task = self.app.ui_queue.get_nowait()
-        task()
+        self.assertGreaterEqual(self.app.ui_queue.qsize(), 1)
 
         updated = self.app.price_menu_items[target_key].title
         self.assertIn("66.66", updated)
+        self.assertNotIn("加载中", updated)
+
+    def test_process_ui_queue_executes_deferred_refresh(self):
+        target_key = self.app.active_tickers[1].key
+        self.app._process_ui_queue = lambda _=None: CoinPriceBarApp._process_ui_queue(self.app, _)
+        self.app.price_menu_items[target_key].title = "Binance:ETH: 加载中..."
+        self.app.ui_queue.put(lambda: CoinPriceBarApp._refresh_snapshot_ui(self.app, target_key))
+
+        self.app._process_ui_queue()
+
+        updated = self.app.price_menu_items[target_key].title
+        self.assertIn("ETH", updated)
+        self.assertNotIn("加载中", updated)
+
+    def test_refresh_updates_even_if_menu_item_is_falsy(self):
+        target_key = self.app.active_tickers[1].key
+        self.app.price_menu_items[target_key] = FalsyDummyItem("Binance:ETH: 加载中...")
+        snapshot = self.app.snapshots[target_key]
+        snapshot.price = 77.77
+        snapshot.change = 3.33
+        snapshot.change_percent = 4.47
+        snapshot.is_first = False
+
+        CoinPriceBarApp._refresh_snapshot_ui(self.app, target_key)
+
+        updated = self.app.price_menu_items[target_key].title
+        self.assertIn("77.77", updated)
         self.assertNotIn("加载中", updated)
 
 

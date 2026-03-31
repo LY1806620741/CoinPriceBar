@@ -389,10 +389,17 @@ class CoinPriceBarApp(rumps.App):
         snapshot.is_first = False
         snapshot.has_error = False
         snapshot.status = self.status_by_exchange.get(exchange.lower(), snapshot.status)
+        is_visible = key in self.price_menu_items
         logging.info(
-            f"价格更新命中: {key} | price={price:.4f} | change={change:.4f} | visible={key in self.price_menu_items}"
+            f"价格更新命中: {key} | price={price:.4f} | change={change:.4f} | visible={is_visible}"
         )
         self.ui_queue.put(lambda ticker_key=key: self._refresh_snapshot_ui(ticker_key))
+
+        if key in self.price_menu_items:
+            try:
+                self._refresh_snapshot_ui(key)
+            except Exception as e:
+                logging.warning(f"同步刷新菜单项失败，已回退到队列刷新: {e}")
 
     def _on_status_update(self, exchange: str, status: str):
         if self._quitting:
@@ -420,7 +427,7 @@ class CoinPriceBarApp(rumps.App):
             logging.info(f"已刷新标题: {self.title}")
 
         item = self.price_menu_items.get(key)
-        if item:
+        if item is not None:
             item.title = self._render_text(snapshot, self.config.menu_template)
             logging.info(f"已刷新菜单项: {key} -> {item.title}")
         else:
