@@ -1,12 +1,21 @@
 import json
 import logging
 import threading
+import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from typing import Callable
+from urllib.parse import parse_qs, urlparse
 
-from .config import AppConfig, DEFAULT_CONFIG_PATH, PERFORMANCE_PRESETS, SUPPORTED_EXCHANGES, SUPPORTED_LANGUAGES, TickerConfig, get_default_tickers, load_app_config
+from .config import (
+    AppConfig,
+    DEFAULT_CONFIG_PATH,
+    PERFORMANCE_PRESETS,
+    SUPPORTED_EXCHANGES,
+    SUPPORTED_LANGUAGES,
+    TickerConfig,
+)
+from .sources import BinancePriceSource, KucoinPriceSource
 
 
 class ConfigPanelServer:
@@ -22,6 +31,31 @@ class ConfigPanelServer:
         self.httpd: ThreadingHTTPServer | None = None
         self.thread: threading.Thread | None = None
         self.port: int | None = None
+        self.symbol_cache: dict[str, tuple[float, list[str]]] = {}
+        self.symbol_cache_ttl = 300.0
+
+    def _get_symbol_provider(self, exchange: str):
+        return {
+            "kucoin": KucoinPriceSource,
+            "binance": BinancePriceSource,
+        }.get(exchange.lower())
+
+    def _list_symbols(self, exchange: str) -> list[str]:
+        exchange = exchange.lower()
+        now = time.monotonic()
+        cached = self.symbol_cache.get(exchange)
+        if cached and now - cached[0] < self.symbol_cache_ttl:
+            return cached[1]
+        provider = self._get_symbol_provider(exchange)
+        if not provider:
+            return []
+        try:
+            symbols = provider(lambda *_: None, lambda *_: None).list_symbols()
+        except Exception as e:
+            logging.warning(f"获取 {exchange} 交易对列表失败: {e}")
+            symbols = []
+        self.symbol_cache[exchange] = (now, symbols)
+        return symbols
 
     def start(self) -> None:
         if self.httpd:
@@ -46,11 +80,16 @@ class ConfigPanelServer:
                 self.wfile.write(body)
 
             def do_GET(self):
-                if self.path in {"/", "/index.html"}:
+                parsed = urlparse(self.path)
+                if parsed.path in {"/", "/index.html"}:
                     self._send_html(server._build_html())
                     return
-                if self.path == "/api/config":
+                if parsed.path == "/api/config":
                     self._send_json(server._serialize_state())
+                    return
+                if parsed.path == "/api/symbols":
+                    exchange = parse_qs(parsed.query).get("exchange", [""])[0]
+                    self._send_json({"exchange": exchange, "symbols": server._list_symbols(exchange)})
                     return
                 self._send_json({"error": "Not found"}, status=404)
 
@@ -204,6 +243,7 @@ class ConfigPanelServer:
   <script>
     let current = null;
     let tickerRows = [];
+    let symbolOptions = {};
     const I18N = {
       'zh-CN': {
         title: 'CoinPriceBar UI 配置面板', hint: '这里编辑的是 UI 展示配置与监控项配置。',
@@ -228,17 +268,14 @@ class ConfigPanelServer:
     };
 
     function tr(key) {
-      const lang = document.getElementById('language').value || (current?.config?.ui?.language) || 'zh-CN';
+      const lang = document.getElementById('language').value || current?.config?.ui?.language || 'zh-CN';
       return (I18N[lang] && I18N[lang][key]) || key;
     }
 
     function applyI18n() {
       document.getElementById('title').textContent = tr('title');
       document.getElementById('hint').textContent = tr('hint');
-      document.querySelectorAll('[data-i18n]').forEach(el => {
-        const key = el.dataset.i18n;
-        el.textContent = tr(key);
-      });
+      document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = tr(el.dataset.i18n); });
       document.getElementById('performance_hint').textContent = tr('performance_hint');
       document.getElementById('custom_hint').textContent = tr('custom_hint');
       fillPerformanceModes(current.performancePresets, document.getElementById('performance_mode').value || current.config.ui.performance_mode || 'balanced');
@@ -284,6 +321,35 @@ class ConfigPanelServer:
       document.getElementById('ui_refresh_interval').disabled = document.getElementById('performance_mode').value !== 'custom';
     }
 
+    async function ensureSymbols(exchange) {
+      exchange = String(exchange || '').toLowerCase();
+      if (!exchange) return [];
+      if (symbolOptions[exchange]) return symbolOptions[exchange];
+      const res = await fetch(`/api/symbols?exchange=${encodeURIComponent(exchange)}`);
+      const data = await res.json();
+      symbolOptions[exchange] = data.symbols || [];
+      return symbolOptions[exchange];
+    }
+
+    function buildSymbolDatalist(exchange) {
+      const id = `symbols-${exchange}`;
+      let list = document.getElementById(id);
+      if (!list) {
+        list = document.createElement('datalist');
+        list.id = id;
+        document.body.appendChild(list);
+      }
+      list.innerHTML = (symbolOptions[exchange] || []).slice(0, 500).map(symbol => `<option value=\"${symbol}\"></option>`).join('');
+      return id;
+    }
+
+    async function refreshSymbolInput(row) {
+      const item = JSON.parse(row.dataset.item);
+      await ensureSymbols(item.exchange);
+      const input = row.querySelector('input[data-field="symbol"]');
+      input.setAttribute('list', buildSymbolDatalist(item.exchange));
+    }
+
     function attachDragHandlers(row) {
       row.draggable = true;
       row.addEventListener('dragstart', () => row.classList.add('dragging'));
@@ -320,20 +386,20 @@ class ConfigPanelServer:
           <td><input type=\"checkbox\" data-field=\"enabled\" ${ticker.enabled ? 'checked' : ''}></td>
           <td><input type=\"checkbox\" data-field=\"visible\" ${ticker.visible ? 'checked' : ''}></td>
           <td><input type=\"radio\" name=\"pinned_title\" data-field=\"pinned_title\" ${ticker.pinned_title ? 'checked' : ''}></td>
-          <td>
-            <select data-field=\"exchange\">${Object.entries(current.exchanges).map(([key, label]) => `<option value=\"${key}\" ${ticker.exchange === key ? 'selected' : ''}>${label}</option>`).join('')}</select>
-          </td>
-          <td><input type=\"text\" data-field=\"symbol\" value=\"${ticker.symbol || ''}\"></td>
+          <td><select data-field=\"exchange\">${Object.entries(current.exchanges).map(([key, label]) => `<option value=\"${key}\" ${ticker.exchange === key ? 'selected' : ''}>${label}</option>`).join('')}</select></td>
+          <td><input type=\"text\" data-field=\"symbol\" value=\"${ticker.symbol || ''}\" autocomplete=\"off\"></td>
           <td><input type=\"text\" data-field=\"display_name\" value=\"${ticker.display_name || ''}\"></td>
           <td><button type=\"button\" data-action=\"remove\">${tr('remove_btn')}</button></td>`;
         attachDragHandlers(row);
+        refreshSymbolInput(row);
         row.querySelectorAll('input,select').forEach(input => {
-          input.addEventListener('change', () => {
+          input.addEventListener('change', async () => {
             const field = input.dataset.field;
             const item = JSON.parse(row.dataset.item);
             if (field === 'enabled' || field === 'visible' || field === 'pinned_title') item[field] = input.checked;
             else item[field] = input.value;
             row.dataset.item = JSON.stringify(item);
+            if (field === 'exchange') await refreshSymbolInput(row);
             if (field === 'pinned_title' && input.checked) {
               document.querySelectorAll('#ticker_rows input[data-field="pinned_title"]').forEach(other => {
                 if (other !== input) other.checked = false;

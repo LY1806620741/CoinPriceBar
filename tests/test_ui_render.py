@@ -1,7 +1,7 @@
 import unittest
 
 from coinpricebar.app import CoinPriceBarApp, _with_trend_suffix
-from coinpricebar.config import AppConfig, _build_app_config, get_default_tickers
+from coinpricebar.config import AppConfig, SUPPORTED_EXCHANGES, _build_app_config, get_default_tickers
 from coinpricebar.sources import BinancePriceSource, KucoinPriceSource
 from coinpricebar.sources.base import MarketSnapshot
 
@@ -77,6 +77,10 @@ class UIRenderTests(unittest.TestCase):
     def test_sources_expose_symbol_list_api(self):
         self.assertTrue(hasattr(BinancePriceSource(lambda *_: None, lambda *_: None), "list_symbols"))
         self.assertTrue(hasattr(KucoinPriceSource(lambda *_: None, lambda *_: None), "list_symbols"))
+
+    def test_supported_exchanges_include_panel_symbol_sources(self):
+        self.assertIn("binance", SUPPORTED_EXCHANGES)
+        self.assertIn("kucoin", SUPPORTED_EXCHANGES)
 
 
 if __name__ == "__main__":
