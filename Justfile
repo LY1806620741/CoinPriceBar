@@ -26,6 +26,10 @@ run:
 run-debug:
   PYTHONLOGLEVEL=DEBUG {{python}} KCSApp.py
 
+# Open the UI config panel in the default browser
+panel:
+  {{python}} -c "from coinpricebar.config import load_app_config; from coinpricebar.app import CoinPriceBarApp; app = CoinPriceBarApp(config=load_app_config()); app.panel_server.open()"
+
 # Run the standard test suite
 test:
   {{unittest}}
@@ -55,9 +59,9 @@ logs:
 open-config:
   {{python}} -c "from pathlib import Path; import webbrowser; path = Path('config.json').resolve(); path.write_text('{\\n  \"ui\": {}\\n}\\n', encoding='utf-8') if not path.exists() else None; webbrowser.open(path.as_uri())"
 
-# Print a small sample of discoverable symbols for each exchange
+# Print exchange symbol counts and a small sample for each source
 symbols:
-  {{python}} -c "from coinpricebar.sources import BinancePriceSource, KucoinPriceSource; sources=(KucoinPriceSource, BinancePriceSource); [print(cls.source_name, len((symbols:=cls(lambda *_: None, lambda *_: None).list_symbols()[:20])), symbols) for cls in sources]"
+  {{python}} -c "from coinpricebar.sources import BinancePriceSource, KucoinPriceSource; sources=(KucoinPriceSource, BinancePriceSource); [print(f'{cls.source_name}: total={len(symbols:=cls(lambda *_: None, lambda *_: None).list_symbols())} sample={symbols[:10]}') for cls in sources]"
 
 # Run install + tests as a quick local verification
 check: install test
