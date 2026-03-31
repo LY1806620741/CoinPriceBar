@@ -74,7 +74,9 @@ class KucoinPriceSource(BasePriceSource):
     def _ticker_callback(self, topic: str, subject: str, data: TickerEvent) -> None:
         try:
             symbol = topic.split(":")[-1]
-            self._emit_price(symbol, float(data.price))
+            price = float(data.price)
+            logging.info(f"KuCoin ticker: {symbol} -> {price}")
+            self._emit_price(symbol, price)
         except Exception as e:
             logging.error(f"KuCoin 回调处理失败: {e}\n{traceback.format_exc()}")
 

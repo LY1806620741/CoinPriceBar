@@ -118,6 +118,25 @@
 
 ## 📦 下载与安装
 
+### 使用 just 管理常用命令
+
+如果本机已安装 `just`，推荐使用：
+
+```bash
+just
+just install
+just run
+just test
+just compile
+just logs
+```
+
+如未安装 `just`，可在 macOS 上使用：
+
+```bash
+brew install just
+```
+
 ### ✅ 一键安装（推荐）
 
 ```bash
@@ -127,15 +146,30 @@ bash -c "$(curl -fsSL https://github.com/LY1806620741/CoinPriceBar/releases/late
 ### 本地运行
 
 ```bash
-python3 -m pip install -r requirements.txt
-python3 KCSApp.py
+just install
+just run
 ```
+
+### 运行测试
+
+```bash
+just test
+```
+
+也可以运行单个测试模块：
+
+```bash
+just test-file tests.test_ui_render
+```
+
+当前标准测试位于 `tests/` 目录，覆盖：
+- UI 涨跌渲染
+- 多交易对菜单刷新
 
 ### 打包 `.app`
 
 ```bash
-python3 -m pip install -r requirements.txt
-python3 setup.py py2app
+just build
 ```
 
 ---

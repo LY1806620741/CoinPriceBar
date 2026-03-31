@@ -52,7 +52,9 @@ class BinancePriceSource(BasePriceSource):
                         break
                 else:
                     symbol = raw_symbol
-            self._emit_price(symbol, _safe_float(data.get("c")))
+            price = _safe_float(data.get("c"))
+            logging.info(f"Binance ticker: {symbol} -> {price}")
+            self._emit_price(symbol, price)
         except Exception as e:
             logging.error(f"Binance 消息处理失败: {e}\n{traceback.format_exc()}")
 
@@ -104,4 +106,3 @@ class BinancePriceSource(BasePriceSource):
                 logging.info("Binance WebSocket 已请求关闭")
             except Exception as e:
                 logging.error(f"停止 Binance WS 失败: {e}\n{traceback.format_exc()}")
-

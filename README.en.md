@@ -125,6 +125,25 @@ Edit `DEFAULT_TICKERS` in `coinpricebar/config.py`:
 
 ## 📦 Install
 
+### Use `just` for common project tasks
+
+If `just` is installed locally, the recommended workflow is:
+
+```bash
+just
+just install
+just run
+just test
+just compile
+just logs
+```
+
+If you don't have `just` yet, on macOS you can install it with:
+
+```bash
+brew install just
+```
+
 ### One-line installer (recommended)
 
 ```bash
@@ -134,15 +153,30 @@ bash -c "$(curl -fsSL https://github.com/LY1806620741/CoinPriceBar/releases/late
 ### Run locally
 
 ```bash
-python3 -m pip install -r requirements.txt
-python3 KCSApp.py
+just install
+just run
 ```
+
+### Run tests
+
+```bash
+just test
+```
+
+You can also run a single unittest module:
+
+```bash
+just test-file tests.test_ui_render
+```
+
+Standard regression tests now live under `tests/`, including coverage for:
+- UI trend rendering
+- multi-ticker menu refresh behavior
 
 ### Build `.app`
 
 ```bash
-python3 -m pip install -r requirements.txt
-python3 setup.py py2app
+just build
 ```
 
 ---
