@@ -182,8 +182,10 @@ class CoinPriceBarApp(rumps.App):
         config.language = str(ui.get("language", config.language)).strip() or config.language
         config.max_visible = max(1, int(ui.get("max_visible", config.max_visible)))
         config.title_index = max(0, int(ui.get("title_index", config.title_index)))
+        config.format_mode = str(ui.get("format_mode", config.format_mode)).strip().lower() or config.format_mode
         config.title_template = str(ui.get("title_template", config.title_template))
         config.menu_template = str(ui.get("menu_template", config.menu_template))
+        config.icon_style = str(ui.get("icon_style", config.icon_style)).strip().lower() or config.icon_style
         display_fields = ui.get("display_fields", config.display_fields)
         if isinstance(display_fields, list):
             config.display_fields = [str(field).strip() for field in display_fields if str(field).strip()]
@@ -198,9 +200,21 @@ class CoinPriceBarApp(rumps.App):
                 if isinstance(item, dict):
                     exchange_config.enabled = bool(item.get("enabled", exchange_config.enabled))
 
+        short_names_payload = ui.get("exchange_short_names") or {}
+        if isinstance(short_names_payload, dict):
+            for name, current_value in config.exchange_short_names.items():
+                value = str(short_names_payload.get(name, current_value)).strip()
+                if value:
+                    config.exchange_short_names[name] = value
+
+        exchange_icons_payload = ui.get("exchange_icons") or {}
+        if isinstance(exchange_icons_payload, dict):
+            for name, current_value in config.exchange_icons.items():
+                config.exchange_icons[name] = str(exchange_icons_payload.get(name, current_value))
+
         tickers_payload = ui.get("tickers") or []
         if isinstance(tickers_payload, list):
-            updated_tickers = []
+            updated_tickers: list[TickerConfig] = []
             for item in tickers_payload:
                 if not isinstance(item, dict):
                     continue
@@ -344,6 +358,11 @@ class CoinPriceBarApp(rumps.App):
     def _menu_label(self, exchange: str) -> str:
         return EXCHANGE_URLS.get(exchange.lower(), {}).get("label", exchange.title())
 
+    def _exchange_short_label(self, exchange: str) -> str:
+        exchange_key = exchange.lower()
+        value = (self.config.exchange_short_names or {}).get(exchange_key, "")
+        return value.strip() or self._menu_label(exchange)
+
     def _format_change(self, snapshot: MarketSnapshot) -> tuple[str, str]:
         if snapshot.is_first:
             return "", ""
@@ -353,10 +372,16 @@ class CoinPriceBarApp(rumps.App):
             return f"↓{abs(snapshot.change):.2f}", f"↓{abs(snapshot.change_percent):.2f}%"
         return f"{snapshot.change:+.2f}", f"{snapshot.change_percent:+.2f}%"
 
-    def _build_display_context(self, snapshot: MarketSnapshot) -> Dict[str, str]:
+    def _build_display_context(self, snapshot: MarketSnapshot) -> dict[str, str]:
         change_text, change_percent_text = self._format_change(snapshot)
+        exchange_short = self._exchange_short_label(snapshot.exchange)
+        exchange_full = self._menu_label(snapshot.exchange)
+        exchange_icon = (self.config.exchange_icons or {}).get(snapshot.exchange.lower(), "")
         return {
-            "exchange": self._menu_label(snapshot.exchange),
+            "exchange": exchange_short,
+            "exchange_short": exchange_short,
+            "exchange_full": exchange_full,
+            "exchange_icon": exchange_icon,
             "symbol": snapshot.display_name or snapshot.symbol,
             "price": "异常" if snapshot.has_error else ("加载中..." if snapshot.is_first and snapshot.price == 0 else f"{snapshot.price:.2f}"),
             "change": change_text,
@@ -367,11 +392,9 @@ class CoinPriceBarApp(rumps.App):
     def _render_text(self, snapshot: MarketSnapshot, template: str, is_title: bool = False) -> str:
         context = self._build_display_context(snapshot)
         try:
-            rendered = template.format(**context)
+            rendered = template.format(**context).strip()
         except Exception:
-            rendered = " ".join(context[field] for field in self.config.display_fields if field in context and context[field])
-
-        rendered = rendered.strip()
+            rendered = f"{context['exchange']} {context['symbol']} {context['price']}"
         if not rendered:
             rendered = f"{context['exchange']} {context['symbol']} {context['price']}"
 
@@ -469,7 +492,7 @@ class CoinPriceBarApp(rumps.App):
         if item is not None:
             item.title = self._render_text(snapshot, self.config.menu_template)
         else:
-            logging.info(f"价格已更新但当前不可见: {key}")
+            logging.debug(f"价格已更新但当前不可见: {key}")
 
     def _process_ui_queue(self, _=None):
         try:
@@ -522,22 +545,28 @@ class CoinPriceBarApp(rumps.App):
                 except Exception:
                     pass
                 try:
-                    self.panel_server.stop()
-                except Exception:
-                    pass
-                self.monitor.stop_all()
-                logging.info("资源清理完成")
-                _dump_threads("Cleanup done")
+                    self.monitor.stop_all()
+                except Exception as e:
+                    logging.error(f"停止监控失败: {e}\n{traceback.format_exc()}")
             finally:
-                terminator.performSelectorOnMainThread_withObject_waitUntilDone_("terminate:", None, False)
-                if ENABLE_HARD_EXIT_FALLBACK:
-                    def _hard_kill():
-                        time.sleep(HARD_EXIT_DELAY_SEC)
-                        logging.critical("优雅退出可能未完成，执行 os._exit(0) 兜底")
-                        os._exit(0)
-                    threading.Thread(target=_hard_kill, daemon=True, name="HardExit").start()
+                _dump_threads("Before terminate")
+                if os.environ.get("COINPRICEBAR_SKIP_TERMINATE") != "1":
+                    try:
+                        NSApp.performSelectorOnMainThread_withObject_waitUntilDone_("terminate:", None, False)
+                    except Exception:
+                        try:
+                            terminator.performSelectorOnMainThread_withObject_waitUntilDone_("terminate:", None, False)
+                        except Exception as e:
+                            logging.error(f"退出应用失败: {e}\n{traceback.format_exc()}")
 
-        threading.Thread(target=_do_cleanup_then_quit, daemon=True, name="Cleanup-Worker").start()
+        threading.Thread(target=_do_cleanup_then_quit, daemon=True, name="Quit-Cleanup").start()
+
+        if ENABLE_HARD_EXIT_FALLBACK:
+            def _hard_exit():
+                time.sleep(HARD_EXIT_DELAY_SEC)
+                os._exit(0)
+
+            threading.Thread(target=_hard_exit, daemon=True, name="Quit-HardExit").start()
 
     def run(self):
         try:

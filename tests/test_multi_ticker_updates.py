@@ -26,6 +26,7 @@ class MultiTickerUpdateTests(unittest.TestCase):
         self.app.config = AppConfig.default()
         self.app.config.title_template = "{exchange}:{symbol} {price} {change_percent}"
         self.app.config.menu_template = "{exchange}:{symbol} {price} {change_percent}"
+        self.app.config.exchange_short_names = {"kucoin": "KC", "binance": "BN"}
         self.app.active_tickers = [
             TickerConfig(exchange="kucoin", symbol="BTC-USDT", display_name="BTC"),
             TickerConfig(exchange="binance", symbol="ETH-USDT", display_name="ETH"),
@@ -43,12 +44,13 @@ class MultiTickerUpdateTests(unittest.TestCase):
         self.app._quitting = False
         self.app.status_by_exchange = {}
         self.app.ui_queue = Queue()
-        self.app._menu_label = lambda exchange: exchange.title()
+        self.app._menu_label = lambda exchange: "KuCoin" if exchange == "kucoin" else exchange.title()
+        self.app._exchange_short_label = lambda exchange: CoinPriceBarApp._exchange_short_label(self.app, exchange)
         self.app._format_change = lambda snapshot: CoinPriceBarApp._format_change(self.app, snapshot)
         self.app._build_display_context = lambda snapshot: CoinPriceBarApp._build_display_context(self.app, snapshot)
         self.app._render_text = lambda snapshot, template, is_title=False: CoinPriceBarApp._render_text(self.app, snapshot, template, is_title)
         self.app._refresh_snapshot_ui = lambda key: CoinPriceBarApp._refresh_snapshot_ui(self.app, key)
-        self.app._should_log = lambda key: False
+        self.app._process_ui_queue = lambda _=None: CoinPriceBarApp._process_ui_queue(self.app, _)
 
     def test_refresh_snapshot_updates_title_and_second_menu_item(self):
         CoinPriceBarApp._refresh_snapshot_ui(self.app, self.app.active_tickers[0].key)
@@ -95,7 +97,6 @@ class MultiTickerUpdateTests(unittest.TestCase):
         snapshot.change_percent = 0.0
         snapshot.is_first = True
         self.app.price_menu_items[target_key].title = "Binance:ETH: 加载中..."
-        self.app._process_ui_queue = lambda _=None: CoinPriceBarApp._process_ui_queue(self.app, _)
 
         CoinPriceBarApp._on_price_update(self.app, "binance", "ETH-USDT", 66.66)
         self.assertGreaterEqual(self.app.ui_queue.qsize(), 1)
@@ -108,7 +109,11 @@ class MultiTickerUpdateTests(unittest.TestCase):
 
     def test_process_ui_queue_executes_deferred_refresh(self):
         target_key = self.app.active_tickers[1].key
-        self.app._process_ui_queue = lambda _=None: CoinPriceBarApp._process_ui_queue(self.app, _)
+        snapshot = self.app.snapshots[target_key]
+        snapshot.price = 52.34
+        snapshot.change = 2.34
+        snapshot.change_percent = 4.68
+        snapshot.is_first = False
         self.app.price_menu_items[target_key].title = "Binance:ETH: 加载中..."
         self.app.ui_queue.put(lambda: CoinPriceBarApp._refresh_snapshot_ui(self.app, target_key))
 
@@ -116,6 +121,7 @@ class MultiTickerUpdateTests(unittest.TestCase):
 
         updated = self.app.price_menu_items[target_key].title
         self.assertIn("ETH", updated)
+        self.assertIn("52.34", updated)
         self.assertNotIn("加载中", updated)
 
     def test_refresh_updates_even_if_menu_item_is_falsy(self):
