@@ -1,4 +1,6 @@
+import tempfile
 import unittest
+from pathlib import Path
 from queue import Queue
 
 from coinpricebar.app import CoinPriceBarApp
@@ -18,6 +20,20 @@ class DummyApp:
 class FalsyDummyItem(DummyItem):
     def __bool__(self):
         return False
+
+
+class NativeMenuItemStub:
+    def __init__(self):
+        self.image = None
+
+    def setImage_(self, image):
+        self.image = image
+
+
+class MenuItemWithNativeStub(DummyItem):
+    def __init__(self, title: str = ""):
+        super().__init__(title)
+        self._menuitem = NativeMenuItemStub()
 
 
 class MultiTickerUpdateTests(unittest.TestCase):
@@ -138,6 +154,90 @@ class MultiTickerUpdateTests(unittest.TestCase):
         updated = self.app.price_menu_items[target_key].title
         self.assertIn("77.77", updated)
         self.assertNotIn("加载中", updated)
+
+    def test_apply_menu_item_icon_sets_native_image_when_available(self):
+        item = MenuItemWithNativeStub("BTC")
+        original_builder = CoinPriceBarApp._build_menu_icon
+        try:
+            CoinPriceBarApp._build_menu_icon = staticmethod(lambda exchange: object())
+            CoinPriceBarApp._apply_menu_item_icon(self.app, item, "kucoin")
+            self.assertIsNotNone(item._menuitem.image)
+        finally:
+            CoinPriceBarApp._build_menu_icon = original_builder
+
+    def test_apply_menu_item_icon_prefers_cached_logo(self):
+        item = MenuItemWithNativeStub("BTC")
+        original_loader = CoinPriceBarApp._load_cached_exchange_icon
+        original_builder = CoinPriceBarApp._build_menu_icon
+        try:
+            CoinPriceBarApp._load_cached_exchange_icon = staticmethod(lambda exchange: object())
+            CoinPriceBarApp._build_menu_icon = staticmethod(lambda exchange: None)
+            CoinPriceBarApp._apply_menu_item_icon(self.app, item, "kucoin")
+            self.assertIsNotNone(item._menuitem.image)
+        finally:
+            CoinPriceBarApp._load_cached_exchange_icon = original_loader
+            CoinPriceBarApp._build_menu_icon = original_builder
+
+    def test_apply_menu_item_icon_falls_back_when_logo_missing(self):
+        item = MenuItemWithNativeStub("BTC")
+        fallback_icon = object()
+        original_loader = CoinPriceBarApp._load_cached_exchange_icon
+        original_builder = CoinPriceBarApp._build_menu_icon
+        try:
+            CoinPriceBarApp._load_cached_exchange_icon = staticmethod(lambda exchange: None)
+            CoinPriceBarApp._build_menu_icon = staticmethod(lambda exchange: fallback_icon)
+            CoinPriceBarApp._apply_menu_item_icon(self.app, item, "kucoin")
+            self.assertIs(item._menuitem.image, fallback_icon)
+        finally:
+            CoinPriceBarApp._load_cached_exchange_icon = original_loader
+            CoinPriceBarApp._build_menu_icon = original_builder
+
+    def test_icon_cache_path_uses_exchange_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            from coinpricebar import app as app_module
+            original_dir = app_module.ICON_CACHE_DIR
+            try:
+                app_module.ICON_CACHE_DIR = Path(tmp)
+                path = CoinPriceBarApp._icon_cache_path("kucoin")
+                self.assertEqual(path.parent, Path(tmp))
+                self.assertTrue(path.name.startswith("kucoin"))
+                self.assertTrue(path.name.endswith(".menu.png"))
+            finally:
+                app_module.ICON_CACHE_DIR = original_dir
+
+    def test_load_cached_exchange_icon_uses_standardized_cache_file(self):
+        original_download = CoinPriceBarApp._download_exchange_icon
+        try:
+            CoinPriceBarApp._download_exchange_icon = staticmethod(lambda exchange: Path("/tmp/fake-logo.menu.png"))
+
+            class FakeImage:
+                pass
+
+            class FakeNSImageFactory:
+                def alloc(self):
+                    return self
+                def initWithContentsOfFile_(self, _path):
+                    return FakeImage()
+
+            from coinpricebar import app as app_module
+            original_nsimage = app_module.NSImage
+            app_module.NSImage = FakeNSImageFactory()
+            try:
+                loaded = CoinPriceBarApp._load_cached_exchange_icon("kucoin")
+                self.assertIsNotNone(loaded)
+            finally:
+                app_module.NSImage = original_nsimage
+        finally:
+            CoinPriceBarApp._download_exchange_icon = original_download
+
+    def test_is_valid_cache_file_detects_non_empty_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            file_path = Path(tmp) / "kucoin.menu.png"
+            file_path.write_bytes(b"abc")
+            self.assertTrue(CoinPriceBarApp._is_valid_cache_file(file_path))
+            empty_path = Path(tmp) / "empty.menu.png"
+            empty_path.write_bytes(b"")
+            self.assertFalse(CoinPriceBarApp._is_valid_cache_file(empty_path))
 
 
 if __name__ == "__main__":

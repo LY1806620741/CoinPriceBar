@@ -1,8 +1,9 @@
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 import threading
 
-from ..config import normalize_symbol
+from ..config import OFFICIAL_EXCHANGE_ICON_URLS, normalize_symbol
 
 
 @dataclass
@@ -24,12 +25,24 @@ class MarketSnapshot:
 
 class BasePriceSource:
     source_name = "base"
+    local_icon_name: str | None = None
 
     def __init__(self, update_callback: Callable[[str, str, float], None], status_callback: Callable[[str, str], None]):
         self.update_callback = update_callback
         self.status_callback = status_callback
         self.running = False
         self.lock = threading.Lock()
+
+    @classmethod
+    def get_icon_url(cls) -> str:
+        return OFFICIAL_EXCHANGE_ICON_URLS.get(cls.source_name, "")
+
+    @classmethod
+    def get_local_icon_path(cls) -> Path | None:
+        if not cls.local_icon_name:
+            return None
+        path = Path(__file__).resolve().parent / cls.local_icon_name
+        return path if path.exists() and path.is_file() else None
 
     def start(self, symbols: list[str]) -> None:
         raise NotImplementedError

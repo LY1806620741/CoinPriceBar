@@ -13,14 +13,17 @@ FORMAT_PRESETS = {
     "short": {
         "title_template": "{exchange_icon}{exchange}:{symbol} {price}",
         "menu_template": "{exchange_icon}{exchange}:{symbol} {price} ({change_percent})",
+        "label": "短格式",
     },
     "long": {
         "title_template": "{exchange_icon}{exchange_full} {symbol} 最新价 {price}",
         "menu_template": "{exchange_icon}{exchange_full} {symbol} 最新价 {price} 涨跌 {change_percent} 状态 {status}",
+        "label": "长格式",
     },
     "custom": {
         "title_template": DEFAULT_TITLE_TEMPLATE,
         "menu_template": DEFAULT_MENU_TEMPLATE,
+        "label": "自定义",
     },
 }
 DEFAULT_FORMAT_MODE = "short"
@@ -34,9 +37,26 @@ EXCHANGE_ICON_PRESETS = {
     "text": {"kucoin": "[KC] ", "binance": "[BN] "},
     "official": {"kucoin": "", "binance": ""},
 }
+ICON_STYLE_OPTIONS = {
+    "none": "无图标",
+    "emoji": "Emoji 图标",
+    "text": "文本图标",
+    "official": "官方 Logo",
+}
 DEFAULT_ICON_STYLE = "official"
+TEMPLATE_VARIABLES = [
+    {"name": "exchange", "example": "KC", "description": "交易所短名称"},
+    {"name": "exchange_short", "example": "KC", "description": "交易所短名称（同 exchange）"},
+    {"name": "exchange_full", "example": "KuCoin", "description": "交易所完整名称"},
+    {"name": "exchange_icon", "example": "🟢 ", "description": "交易所图标/前缀"},
+    {"name": "symbol", "example": "BTC", "description": "显示名称或交易对"},
+    {"name": "price", "example": "67019.00", "description": "当前价格"},
+    {"name": "change", "example": "↑+520.00", "description": "价格涨跌额"},
+    {"name": "change_percent", "example": "↑0.78%", "description": "价格涨跌幅"},
+    {"name": "status", "example": "在线", "description": "连接状态"},
+]
 TEMPLATE_EXAMPLES = [
-    "{exchange}:{symbol} {price}",
+    "{exchange_icon}{exchange}:{symbol} {price}",
     "{exchange_icon}{exchange}:{symbol} {price} ({change_percent})",
     "{exchange_full} {symbol} 最新价 {price} 状态 {status}",
 ]
@@ -316,7 +336,8 @@ def _serialize_default_config(default_config: AppConfig) -> Dict[str, object]:
             "title_template": default_config.title_template,
             "menu_template": default_config.menu_template,
             "template_examples": list(TEMPLATE_EXAMPLES),
-            "icon_style": default_config.icon_style,
+            "template_variables": list(TEMPLATE_VARIABLES),
+            "icon_style_options": dict(ICON_STYLE_OPTIONS),
             "exchange_icons": dict(default_config.exchange_icons),
             "official_exchange_icon_urls": dict(OFFICIAL_EXCHANGE_ICON_URLS),
             "show_exchange_links": default_config.show_exchange_links,

@@ -32,6 +32,7 @@ def _dump_threads(tag: str):
 
 class KucoinPriceSource(BasePriceSource):
     source_name = "kucoin"
+    local_icon_name = "kucoin.png"
 
     def __init__(self, update_callback, status_callback):
         super().__init__(update_callback, status_callback)

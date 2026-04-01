@@ -5,15 +5,24 @@ import threading
 import time
 import traceback
 import webbrowser
+from pathlib import Path
 from typing import Dict
+from urllib.error import URLError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 import rumps
-from AppKit import NSApp
+from AppKit import NSApp, NSBitmapImageRep, NSColor, NSFont, NSImage, NSMakeRect, NSPNGFileType, NSZeroRect
 from Foundation import NSObject
 
-from .config import AppConfig, DEFAULT_CONFIG_PATH, TickerConfig, UITickerPreference, get_default_tickers, load_app_config, normalize_symbol
+from .config import AppConfig, DEFAULT_CONFIG_PATH, OFFICIAL_EXCHANGE_ICON_URLS, TickerConfig, UITickerPreference, get_default_tickers, load_app_config, normalize_symbol
 from .panel import ConfigPanelServer
 from .sources import BasePriceSource, BinancePriceSource, KucoinPriceSource, MarketSnapshot
+
+SOURCE_ICON_MAP = {
+    "kucoin": KucoinPriceSource,
+    "binance": BinancePriceSource,
+}
 
 LOG_CONFIG = {
     "level": logging.INFO,
@@ -43,6 +52,15 @@ EXCHANGE_URLS = {
 }
 
 logging.basicConfig(**LOG_CONFIG)
+
+EXCHANGE_MENU_ICON_STYLE = {
+    "kucoin": {"bg": (0.14, 0.74, 0.63, 1.0), "fg": (1.0, 1.0, 1.0, 1.0), "text": "K"},
+    "binance": {"bg": (0.95, 0.71, 0.09, 1.0), "fg": (0.1, 0.1, 0.1, 1.0), "text": "B"},
+}
+MENU_ICON_SIZE = 18
+ICON_CACHE_DIR = Path(__file__).resolve().parent.parent / ".cache" / "exchange_icons"
+ICON_DOWNLOAD_TIMEOUT = 5
+MENU_ICON_CACHE_SUFFIX = ".menu.png"
 
 
 def is_color_dot(char: str) -> bool:
@@ -168,6 +186,7 @@ class CoinPriceBarApp(rumps.App):
         self._init_snapshots()
         self._init_menu()
         self._start_ui_timer()
+        self._warm_menu_icons_async()
         self.monitor.start_all()
 
     def _get_current_config(self) -> AppConfig:
@@ -312,6 +331,172 @@ class CoinPriceBarApp(rumps.App):
             self.snapshots[ticker.key] = snapshot
         logging.info(f"已初始化快照数量: {len(self.snapshots)} | keys: {list(self.snapshots.keys())}")
 
+    @staticmethod
+    def _ns_color(rgba: tuple[float, float, float, float]):
+        return NSColor.colorWithCalibratedRed_green_blue_alpha_(*rgba)
+
+    @staticmethod
+    def _build_menu_icon(exchange: str) -> NSImage | None:
+        style = EXCHANGE_MENU_ICON_STYLE.get(exchange.lower())
+        if not style:
+            return None
+        image = NSImage.alloc().initWithSize_((MENU_ICON_SIZE, MENU_ICON_SIZE))
+        image.lockFocus()
+        try:
+            CoinPriceBarApp._ns_color(style["bg"]).set()
+            NSColor.clearColor().set()
+            from AppKit import NSBezierPath, NSAttributedString
+            path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(NSMakeRect(0, 0, MENU_ICON_SIZE, MENU_ICON_SIZE), 4, 4)
+            path.fill()
+            attrs = {
+                "NSFont": NSFont.boldSystemFontOfSize_(11),
+                "NSColor": CoinPriceBarApp._ns_color(style["fg"]),
+            }
+            text = NSAttributedString.alloc().initWithString_attributes_(style["text"], attrs)
+            text.drawAtPoint_((5, 2))
+        except Exception:
+            image.unlockFocus()
+            return None
+        image.unlockFocus()
+        return image
+
+    @staticmethod
+    def _fit_image_for_menu(source: NSImage) -> NSImage | None:
+        try:
+            target = NSImage.alloc().initWithSize_((MENU_ICON_SIZE, MENU_ICON_SIZE))
+            target.lockFocus()
+            try:
+                source_size = source.size()
+                src_w = float(source_size.width)
+                src_h = float(source_size.height)
+                if src_w <= 0 or src_h <= 0:
+                    return None
+                scale = min(MENU_ICON_SIZE / src_w, MENU_ICON_SIZE / src_h)
+                draw_w = max(1.0, src_w * scale)
+                draw_h = max(1.0, src_h * scale)
+                draw_x = (MENU_ICON_SIZE - draw_w) / 2.0
+                draw_y = (MENU_ICON_SIZE - draw_h) / 2.0
+                source.drawInRect_fromRect_operation_fraction_(NSMakeRect(draw_x, draw_y, draw_w, draw_h), NSZeroRect, 2, 1.0)
+            finally:
+                target.unlockFocus()
+            return target
+        except Exception as e:
+            logging.debug(f"标准化菜单图标失败: {e}")
+            return None
+
+    @staticmethod
+    def _icon_cache_path(exchange: str) -> Path:
+        ICON_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        source_cls = SOURCE_ICON_MAP.get(exchange.lower())
+        local_path = source_cls.get_local_icon_path() if source_cls else None
+        if local_path is not None:
+            return ICON_CACHE_DIR / f"{exchange.lower()}{local_path.suffix}"
+        url = OFFICIAL_EXCHANGE_ICON_URLS.get(exchange.lower(), "")
+        suffix = Path(urlparse(url).path).suffix or ".img"
+        return ICON_CACHE_DIR / f"{exchange.lower()}{suffix}"
+
+    @staticmethod
+    def _is_valid_cache_file(path: Path) -> bool:
+        return path.exists() and path.is_file() and path.stat().st_size > 0
+
+    @staticmethod
+    def _write_menu_icon_png(image: NSImage, target_path: Path) -> bool:
+        try:
+            tiff_data = image.TIFFRepresentation()
+            if tiff_data is None:
+                return False
+            bitmap = NSBitmapImageRep.imageRepWithData_(tiff_data)
+            if bitmap is None:
+                return False
+            png_data = bitmap.representationUsingType_properties_(NSPNGFileType, None)
+            if png_data is None:
+                return False
+            ok = bool(png_data.writeToFile_atomically_(str(target_path), True))
+            return ok and CoinPriceBarApp._is_valid_cache_file(target_path)
+        except Exception as e:
+            logging.debug(f"写入菜单 PNG 缓存失败: {target_path} -> {e}")
+            return False
+
+    @staticmethod
+    def _download_exchange_icon(exchange: str) -> Path | None:
+        url = OFFICIAL_EXCHANGE_ICON_URLS.get(exchange.lower(), "")
+        cache_path = CoinPriceBarApp._icon_cache_path(exchange)
+        if CoinPriceBarApp._is_valid_cache_file(cache_path):
+            return cache_path
+        source_cls = SOURCE_ICON_MAP.get(exchange.lower())
+        local_path = source_cls.get_local_icon_path() if source_cls else None
+        try:
+            if cache_path.exists() and not CoinPriceBarApp._is_valid_cache_file(cache_path):
+                cache_path.unlink(missing_ok=True)
+            ICON_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            if url:
+                request = Request(
+                    url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36",
+                        "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+                        "Referer": "https://www.kucoin.com/" if exchange.lower() == "kucoin" else "https://www.binance.com/",
+                    },
+                )
+                with urlopen(request, timeout=ICON_DOWNLOAD_TIMEOUT) as response:
+                    data = response.read()
+                    content_type = str(response.headers.get("Content-Type", ""))
+                if data and ("image" in content_type.lower() or exchange.lower() != "kucoin"):
+                    cache_path.write_bytes(data)
+                    if CoinPriceBarApp._is_valid_cache_file(cache_path):
+                        return cache_path
+            if local_path is not None and local_path.exists():
+                cache_path.write_bytes(local_path.read_bytes())
+                return cache_path if CoinPriceBarApp._is_valid_cache_file(cache_path) else None
+            return None
+        except (OSError, URLError, TimeoutError) as e:
+            logging.warning(f"下载官方 logo 失败: {exchange} -> {e}")
+            if local_path is not None and local_path.exists():
+                try:
+                    cache_path.write_bytes(local_path.read_bytes())
+                    return cache_path if CoinPriceBarApp._is_valid_cache_file(cache_path) else None
+                except OSError:
+                    return None
+            return cache_path if CoinPriceBarApp._is_valid_cache_file(cache_path) else None
+
+    @staticmethod
+    def _load_cached_exchange_icon(exchange: str) -> NSImage | None:
+        cache_path = CoinPriceBarApp._download_exchange_icon(exchange)
+        if not cache_path or not CoinPriceBarApp._is_valid_cache_file(cache_path):
+            return None
+        try:
+            image = NSImage.alloc().initWithContentsOfFile_(str(cache_path))
+            if image is None:
+                cache_path.unlink(missing_ok=True)
+                return None
+            fitted = CoinPriceBarApp._fit_image_for_menu(image)
+            return fitted or image
+        except Exception as e:
+            logging.debug(f"读取缓存 logo 失败: {exchange} -> {e}")
+            cache_path.unlink(missing_ok=True)
+            return None
+
+    def _apply_menu_item_icon(self, item: rumps.MenuItem, exchange: str):
+        try:
+            native_item = getattr(item, "_menuitem", None)
+            if native_item is None:
+                return
+            icon = CoinPriceBarApp._load_cached_exchange_icon(exchange)
+            if icon is None and exchange.lower() == "kucoin":
+                cache_path = CoinPriceBarApp._icon_cache_path(exchange)
+                if cache_path.exists():
+                    try:
+                        cache_path.unlink()
+                    except OSError:
+                        pass
+                    icon = CoinPriceBarApp._load_cached_exchange_icon(exchange)
+            if icon is None:
+                icon = CoinPriceBarApp._build_menu_icon(exchange)
+            if icon is not None:
+                native_item.setImage_(icon)
+        except Exception as e:
+            logging.debug(f"设置菜单图标失败: {exchange} -> {e}")
+
     def _init_menu(self):
         self.menu.clear()
         self.price_menu_items = {}
@@ -330,6 +515,7 @@ class CoinPriceBarApp(rumps.App):
                 title=f"{self._menu_label(ticker.exchange)}:{ticker.display_name or ticker.normalized_symbol}: 加载中...",
                 callback=lambda _, tk=ticker: self._open_trade_page(tk.exchange, tk.normalized_symbol),
             )
+            self._apply_menu_item_icon(item, ticker.exchange)
             self.price_menu_items[ticker.key] = item
             self.menu.add(item)
         self.menu.add(rumps.separator)
@@ -377,13 +563,14 @@ class CoinPriceBarApp(rumps.App):
         exchange_short = self._exchange_short_label(snapshot.exchange)
         exchange_full = self._menu_label(snapshot.exchange)
         exchange_icon = (self.config.exchange_icons or {}).get(snapshot.exchange.lower(), "")
+        price_text = "异常" if snapshot.has_error else ("加载中..." if snapshot.is_first and snapshot.price == 0 else f"{snapshot.price:.2f}")
         return {
             "exchange": exchange_short,
             "exchange_short": exchange_short,
             "exchange_full": exchange_full,
             "exchange_icon": exchange_icon,
             "symbol": snapshot.display_name or snapshot.symbol,
-            "price": "异常" if snapshot.has_error else ("加载中..." if snapshot.is_first and snapshot.price == 0 else f"{snapshot.price:.2f}"),
+            "price": price_text,
             "change": change_text,
             "change_percent": change_percent_text,
             "status": snapshot.status or "在线",
@@ -398,6 +585,12 @@ class CoinPriceBarApp(rumps.App):
         if not rendered:
             rendered = f"{context['exchange']} {context['symbol']} {context['price']}"
 
+        if is_title:
+            title_prefix = (self.config.exchange_icons or {}).get(snapshot.exchange.lower(), "")
+            if not title_prefix:
+                title_prefix = f"[{self._exchange_short_label(snapshot.exchange)}] "
+            if title_prefix and not rendered.startswith(title_prefix):
+                rendered = f"{title_prefix}{rendered}".strip()
         rendered = _with_trend_suffix(rendered, snapshot.change)
         return _with_status_suffix(rendered, snapshot.status if not is_title else "")
 
@@ -567,6 +760,27 @@ class CoinPriceBarApp(rumps.App):
                 os._exit(0)
 
             threading.Thread(target=_hard_exit, daemon=True, name="Quit-HardExit").start()
+
+    def _refresh_all_menu_icons(self):
+        for ticker in self.active_tickers:
+            item = self.price_menu_items.get(ticker.key)
+            if item is not None:
+                self._apply_menu_item_icon(item, ticker.exchange)
+
+    def _warm_menu_icons_async(self):
+        exchanges = sorted({ticker.exchange.lower() for ticker in self.active_tickers})
+        if not exchanges:
+            return
+
+        def _worker():
+            try:
+                for exchange in exchanges:
+                    CoinPriceBarApp._download_exchange_icon(exchange)
+                self.ui_queue.put(self._refresh_all_menu_icons)
+            except Exception as e:
+                logging.debug(f"后台预热交易所 logo 失败: {e}")
+
+        threading.Thread(target=_worker, daemon=True, name="Warm-Menu-Icons").start()
 
     def run(self):
         try:

@@ -12,11 +12,13 @@ from .config import (
     DEFAULT_CONFIG_PATH,
     EXCHANGE_ICON_PRESETS,
     FORMAT_PRESETS,
+    ICON_STYLE_OPTIONS,
     OFFICIAL_EXCHANGE_ICON_URLS,
     PERFORMANCE_PRESETS,
     SUPPORTED_EXCHANGES,
     SUPPORTED_LANGUAGES,
     TEMPLATE_EXAMPLES,
+    TEMPLATE_VARIABLES,
     TickerConfig,
 )
 from .sources import BinancePriceSource, KucoinPriceSource
@@ -162,6 +164,8 @@ class ConfigPanelServer:
             "performancePresets": PERFORMANCE_PRESETS,
             "formatPresets": FORMAT_PRESETS,
             "templateExamples": list(TEMPLATE_EXAMPLES),
+            "templateVariables": list(TEMPLATE_VARIABLES),
+            "iconStyleOptions": dict(ICON_STYLE_OPTIONS),
             "iconPresets": EXCHANGE_ICON_PRESETS,
             "officialExchangeIconUrls": OFFICIAL_EXCHANGE_ICON_URLS,
             "languages": sorted(SUPPORTED_LANGUAGES),
@@ -199,6 +203,9 @@ class ConfigPanelServer:
     .small-input { width: 120px; }
     .examples { background: #f8f8f8; border-radius: 8px; padding: 10px 12px; }
     .examples code { display: block; margin: 4px 0; }
+    .reference-box { background: #f8f8f8; border-radius: 8px; padding: 10px 12px; }
+    .reference-box table { margin-top: 0; }
+    .reference-box th, .reference-box td { border-bottom: 1px solid #ececec; padding: 6px 8px; font-size: 13px; }
     .preview-box { background: #111827; color: #f9fafb; border-radius: 10px; padding: 12px 14px; }
     .preview-row { display: flex; align-items: center; gap: 8px; min-height: 28px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .preview-label { color: #9ca3af; font-size: 12px; margin-bottom: 6px; }
@@ -234,6 +241,13 @@ class ConfigPanelServer:
     <textarea id="menu_template"></textarea>
     <label data-i18n="template_examples">模板例子</label>
     <div id="template_examples" class="examples"></div>
+
+    <label data-i18n="template_variables">变量列表</label>
+    <div id="template_variables" class="reference-box"></div>
+
+    <label data-i18n="style_options">样式列表</label>
+    <div id="style_options" class="reference-box"></div>
+
     <label data-i18n="live_preview">实时预览</label>
     <div class="preview-box">
       <div class="preview-label" data-i18n="title_preview">标题预览</div>
@@ -242,6 +256,7 @@ class ConfigPanelServer:
       <div class="preview-label" data-i18n="menu_preview">菜单预览</div>
       <div id="menu_preview" class="preview-row"></div>
     </div>
+
     <label for="display_fields" data-i18n="display_fields">降级字段</label>
     <input id="display_fields" type="text" />
     <label for="show_exchange_links" data-i18n="show_exchange_links">显示交易所链接</label>
@@ -288,6 +303,7 @@ class ConfigPanelServer:
         title: 'CoinPriceBar UI 配置面板', hint: '这里编辑的是 UI 展示配置与监控项配置。',
         language: '语言', exchange_enable: '启用交易所', exchange_short_names: '交易所短标识', exchange_icons: '交易所图标预览', max_visible: '显示数量',
         format_mode: '格式模式', icon_style: '交易所图标', title_template: '标题模板', menu_template: '菜单模板', template_examples: '模板例子',
+        template_variables: '变量列表', style_options: '样式列表',
         live_preview: '实时预览', title_preview: '标题预览', menu_preview: '菜单预览',
         display_fields: '降级字段', show_exchange_links: '显示交易所链接', performance_mode: '性能模式',
         refresh_interval: '自定义刷新频率（秒）', ticker_list: '监控交易对配置', enabled: '启用监控', visible: '显示',
@@ -302,6 +318,7 @@ class ConfigPanelServer:
         title: 'CoinPriceBar UI Config Panel', hint: 'Edit UI display settings and monitored tickers here.',
         language: 'Language', exchange_enable: 'Enabled exchanges', exchange_short_names: 'Exchange short labels', exchange_icons: 'Exchange icon preview', max_visible: 'Visible count',
         format_mode: 'Format mode', icon_style: 'Exchange icon', title_template: 'Title template', menu_template: 'Menu template', template_examples: 'Template examples',
+        template_variables: 'Variables', style_options: 'Styles',
         live_preview: 'Live preview', title_preview: 'Title preview', menu_preview: 'Menu preview',
         display_fields: 'Fallback fields', show_exchange_links: 'Show exchange links', performance_mode: 'Performance mode',
         refresh_interval: 'Custom refresh interval (seconds)', ticker_list: 'Monitored tickers', enabled: 'Enabled', visible: 'Visible',
@@ -441,6 +458,8 @@ class ConfigPanelServer:
       fillFormatModes(current.formatPresets, document.getElementById('format_mode').value || current.config.ui.format_mode || 'short');
       fillIconStyles(current.iconPresets, document.getElementById('icon_style').value || current.config.ui.icon_style || 'emoji');
       renderTemplateExamples(current.templateExamples || []);
+      renderTemplateVariables(current.templateVariables || []);
+      renderStyleOptions();
       renderExchangeIcons(current.exchanges, collectExchangeIconsRaw());
       renderTickerRows();
       syncFormatEditorState();
@@ -525,9 +544,9 @@ class ConfigPanelServer:
     function renderExchangeIcons(exchanges, values) {
       const wrap = document.getElementById('exchange_icons');
       wrap.innerHTML = '';
-      const style = document.getElementById('icon_style')?.value || current?.config?.ui?.icon_style || 'emoji';
+      const style = document.getElementById('icon_style')?.value || current?.config?.ui?.icon_style || 'official';
       const shortNames = currentExchangeShortNames();
-      Object.entries(exchanges).forEach(([key, label]) => {
+      Object.entries(exchanges || {}).forEach(([key, label]) => {
         const row = document.createElement('label');
         row.className = 'inline';
         if (style === 'official') {
@@ -538,6 +557,18 @@ class ConfigPanelServer:
         }
         wrap.appendChild(row);
       });
+    }
+
+    function renderTemplateVariables(variables) {
+      const wrap = document.getElementById('template_variables');
+      wrap.innerHTML = `<table><thead><tr><th>变量</th><th>示例</th><th>说明</th></tr></thead><tbody>${(variables || []).map(item => `<tr><td><code>{${item.name}}</code></td><td>${item.example || ''}</td><td>${item.description || ''}</td></tr>`).join('')}</tbody></table>`;
+    }
+
+    function renderStyleOptions() {
+      const wrap = document.getElementById('style_options');
+      const formatRows = Object.entries(current.formatPresets || {}).map(([key, value]) => `<tr><td><strong>${key}</strong></td><td>${value.label || key}</td><td><code>${value.title_template || ''}</code><br><code>${value.menu_template || ''}</code></td></tr>`).join('');
+      const iconRows = Object.entries(current.iconStyleOptions || {}).map(([key, value]) => `<tr><td><strong>${key}</strong></td><td>${value}</td><td>${key === 'official' ? '优先使用官方 Logo，失败回退' : '文本/emoji/空图标样式'}</td></tr>`).join('');
+      wrap.innerHTML = `<div><div class="muted">格式模式</div><table><thead><tr><th>Key</th><th>名称</th><th>模板</th></tr></thead><tbody>${formatRows}</tbody></table></div><div style="height:10px"></div><div><div class="muted">图标样式</div><table><thead><tr><th>Key</th><th>名称</th><th>说明</th></tr></thead><tbody>${iconRows}</tbody></table></div>`;
     }
 
     function syncFormatEditorState() {
@@ -727,6 +758,8 @@ class ConfigPanelServer:
       fillIconStyles(state.iconPresets, ui.icon_style || 'official');
       renderExchangeIcons(state.exchanges, ui.exchange_icons || {});
       renderTemplateExamples(state.templateExamples || []);
+      renderTemplateVariables(state.templateVariables || []);
+      renderStyleOptions();
       document.getElementById('max_visible').value = ui.max_visible || 1;
       document.getElementById('title_template').value = ui.title_template || '';
       document.getElementById('menu_template').value = ui.menu_template || '';
