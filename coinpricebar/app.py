@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 import rumps
-from AppKit import NSApp, NSBitmapImageRep, NSColor, NSFont, NSImage, NSMakeRect, NSPNGFileType, NSZeroRect
+from AppKit import NSApp, NSBitmapImageRep, NSColor, NSFont, NSImage, NSMakeRect, NSPNGFileType, NSStatusBar, NSVariableStatusItemLength, NSZeroRect
 from Foundation import NSObject
 
 from .config import AppConfig, DEFAULT_CONFIG_PATH, OFFICIAL_EXCHANGE_ICON_URLS, TickerConfig, UITickerPreference, get_default_tickers, load_app_config, normalize_symbol
@@ -183,8 +183,10 @@ class CoinPriceBarApp(rumps.App):
         self.monitor = MultiSourcePriceMonitor(self.monitored_tickers, self._on_price_update, self._on_status_update)
         self.panel_server = ConfigPanelServer(self._get_current_config, self._get_all_tickers, self._save_ui_config_payload)
         self._quitting = False
+        self._status_item = None
         self._init_snapshots()
         self._init_menu()
+        self._bind_status_item_button()
         self._start_ui_timer()
         self._warm_menu_icons_async()
         self.monitor.start_all()
@@ -578,6 +580,9 @@ class CoinPriceBarApp(rumps.App):
 
     def _render_text(self, snapshot: MarketSnapshot, template: str, is_title: bool = False) -> str:
         context = self._build_display_context(snapshot)
+        if is_title:
+            context = dict(context)
+            context["exchange_icon"] = ""
         try:
             rendered = template.format(**context).strip()
         except Exception:
@@ -585,12 +590,6 @@ class CoinPriceBarApp(rumps.App):
         if not rendered:
             rendered = f"{context['exchange']} {context['symbol']} {context['price']}"
 
-        if is_title:
-            title_prefix = (self.config.exchange_icons or {}).get(snapshot.exchange.lower(), "")
-            if not title_prefix:
-                title_prefix = f"[{self._exchange_short_label(snapshot.exchange)}] "
-            if title_prefix and not rendered.startswith(title_prefix):
-                rendered = f"{title_prefix}{rendered}".strip()
         rendered = _with_trend_suffix(rendered, snapshot.change)
         return _with_status_suffix(rendered, snapshot.status if not is_title else "")
 
@@ -602,6 +601,54 @@ class CoinPriceBarApp(rumps.App):
             self._refresh_snapshot_ui(ticker.key)
         if not self.active_tickers:
             self.title = "CoinPriceBar"
+
+    def _bind_status_item_button(self):
+        try:
+            candidates = []
+            menu_impl = getattr(self, "menu", None)
+            if menu_impl is not None:
+                candidates.extend([
+                    getattr(menu_impl, "_menu", None),
+                    getattr(menu_impl, "_statusitem", None),
+                    getattr(menu_impl, "statusitem", None),
+                ])
+            candidates.extend([
+                getattr(self, "_statusitem", None),
+                getattr(self, "_nsstatusitem", None),
+                getattr(self, "_menuitem", None),
+                getattr(self, "_status_bar", None),
+                getattr(self, "_statusbar", None),
+            ])
+            raw_candidates = []
+            for candidate in candidates:
+                if candidate is None:
+                    continue
+                raw_candidates.append(candidate)
+                raw_candidates.append(getattr(candidate, "_menuitem", None))
+                raw_candidates.append(getattr(candidate, "_statusitem", None))
+            for candidate in raw_candidates:
+                if candidate is None:
+                    continue
+                if hasattr(candidate, "button") or hasattr(candidate, "setImage_"):
+                    self._status_item = candidate
+                    logging.info(f"标题状态栏对象已绑定: {type(candidate)}")
+                    return
+            self._status_item = None
+            logging.warning("标题状态栏对象未找到")
+        except Exception as e:
+            logging.warning(f"绑定状态栏按钮失败: {e}")
+            self._status_item = None
+
+    def _set_title_icon(self, exchange: str):
+        try:
+            cache_path = CoinPriceBarApp._download_exchange_icon(exchange)
+            if not cache_path or not CoinPriceBarApp._is_valid_cache_file(cache_path):
+                logging.warning(f"设置标题图标失败: 未加载到 {exchange} 图标")
+                return
+            self.icon = str(cache_path)
+            logging.info(f"标题图标已设置: {exchange} -> {cache_path}")
+        except Exception as e:
+            logging.warning(f"设置标题图标失败: {exchange} -> {e}")
 
     def _open_ui_panel(self, _):
         try:
@@ -680,6 +727,7 @@ class CoinPriceBarApp(rumps.App):
 
         if self.active_tickers and key == self.active_tickers[self.title_ticker_index].key:
             self.title = self._render_text(snapshot, self.config.title_template, is_title=True)
+            self._set_title_icon(snapshot.exchange)
 
         item = self.price_menu_items.get(key)
         if item is not None:
