@@ -770,7 +770,7 @@
     }
 
     function normalizeOrders() {
-      sortedTickerRows().forEach((row, index) => { row.order = index; });
+      tickerRows.forEach((row, index) => { row.order = index; });
     }
 
     function commitTickerRowDomOrder() {

@@ -134,14 +134,15 @@ async function bootPanel() {
 }
 
 function keysFromDom(document) {
-  return [...document.querySelectorAll('#ticker_rows tr[data-key]')].map(row => row.dataset.key);
+  return Array.from(document.querySelectorAll('#ticker_rows tr[data-key]'), row => String(row.dataset.key));
 }
 
 function simulateSortableReorder(sortableInstance, fromIndex, toIndex) {
   const rows = [...sortableInstance.element.querySelectorAll('tr[data-key]')];
   const moved = rows[fromIndex];
   const target = rows[toIndex];
-  sortableInstance.element.insertBefore(moved, target);
+  const insertBeforeNode = fromIndex < toIndex ? target.nextElementSibling : target;
+  sortableInstance.element.insertBefore(moved, insertBeforeNode);
   sortableInstance.options.onEnd?.({ oldIndex: fromIndex, newIndex: toIndex });
 }
 
@@ -154,7 +155,7 @@ test('panel drag reorder updates DOM order and collectPayload order', async () =
   assert.deepEqual(keysFromDom(document), ['binance::ETH-USDT', 'kucoin::BTC-USDT', 'kucoin::KCS-USDT']);
 
   const payload = dom.window.collectPayload();
-  assert.deepEqual(payload.ui.tickers.map(item => `${item.exchange}::${item.symbol}`), ['binance::ETH-USDT', 'kucoin::BTC-USDT', 'kucoin::KCS-USDT']);
+  assert.deepEqual(Array.from(payload.ui.tickers, item => `${item.exchange}::${item.symbol}`), ['binance::ETH-USDT', 'kucoin::BTC-USDT', 'kucoin::KCS-USDT']);
 });
 
 test('panel saveState posts reordered ticker payload', async () => {
@@ -165,7 +166,7 @@ test('panel saveState posts reordered ticker payload', async () => {
   await dom.window.saveState();
   const savedPayload = getSavedPayload();
   assert.ok(savedPayload, 'expected save payload to be captured');
-  assert.deepEqual(savedPayload.ui.tickers.map(item => `${item.exchange}::${item.symbol}`), ['binance::ETH-USDT', 'kucoin::BTC-USDT', 'kucoin::KCS-USDT']);
+  assert.deepEqual(Array.from(savedPayload.ui.tickers, item => `${item.exchange}::${item.symbol}`), ['binance::ETH-USDT', 'kucoin::BTC-USDT', 'kucoin::KCS-USDT']);
 });
 
 test('panel sortable initialization is handle-only and table-row based', async () => {
