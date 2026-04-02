@@ -166,6 +166,19 @@ class UIRenderTests(unittest.TestCase):
         self.assertEqual(context["exchange_full"], "KuCoin")
         self.assertEqual(context["exchange_icon"], "🟢 ")
 
+    def test_build_display_context_status_uses_trend_dots_when_online(self):
+        rising = MarketSnapshot(exchange="kucoin", symbol="BTC-USDT", display_name="BTC", price=100.0, change=1.0, change_percent=1.0, is_first=False)
+        falling = MarketSnapshot(exchange="kucoin", symbol="BTC-USDT", display_name="BTC", price=100.0, change=-1.0, change_percent=-1.0, is_first=False)
+        flat = MarketSnapshot(exchange="kucoin", symbol="BTC-USDT", display_name="BTC", price=100.0, change=0.0, change_percent=0.0, is_first=False)
+
+        rising_context = CoinPriceBarApp._build_display_context(self.app, rising)
+        falling_context = CoinPriceBarApp._build_display_context(self.app, falling)
+        flat_context = CoinPriceBarApp._build_display_context(self.app, flat)
+
+        self.assertEqual(rising_context["status"], "🟢")
+        self.assertEqual(falling_context["status"], "🔴")
+        self.assertEqual(flat_context["status"], "⚪")
+
     def test_render_text_supports_exchange_icon_placeholder(self):
         self.app.config.exchange_short_names = {"kucoin": "KC", "binance": "BN"}
         self.app.config.exchange_icons = {"kucoin": "🟢 ", "binance": "🟡 "}
@@ -213,15 +226,20 @@ class UIRenderTests(unittest.TestCase):
         self.assertIn("custom-config-tabs", html)
         self.assertIn("data-custom-tab-button=\"exchange\"", html)
         self.assertIn("id=\"custom_tab_template\"", html)
-        self.assertIn("id=\"custom_tab_preview\"", html)
         self.assertIn("id=\"display_fields_label\"", html)
         self.assertIn("id=\"display_fields_wrap\"", html)
         self.assertIn("id=\"ui_refresh_interval_label\"", html)
         self.assertIn("id=\"ui_refresh_interval_wrap\"", html)
         self.assertIn("id=\"performance_value_hint\"", html)
+        self.assertIn("id=\"title_template\"", html)
+        self.assertIn("id=\"menu_template\"", html)
+        self.assertNotIn("id=\"advanced_template_editor\"", html)
+        self.assertIn("data-apply-template", html)
+        self.assertIn("data-variable-name", html)
         self.assertIn("function renderExchangeIcons", html)
         self.assertIn("function renderTemplateVariables", html)
         self.assertIn("function renderStyleOptions", html)
+        self.assertIn("function applyTemplatePreset", html)
         self.assertIn("function activateCustomTab", html)
         self.assertIn("function setCustomSectionVisibility", html)
         self.assertIn("function setDisplayFieldsVisibility", html)
@@ -233,6 +251,7 @@ class UIRenderTests(unittest.TestCase):
         self.assertIn("document.getElementById('ui_refresh_interval').addEventListener('input', syncPerformanceModeUI)", html)
         self.assertIn("performance_value_hint", html)
         self.assertIn("performance_custom_value_hint", html)
+        self.assertIn("variable-browser", html)
         self.assertIn("possible_values", html)
         self.assertIn("variable-example-list", html)
 

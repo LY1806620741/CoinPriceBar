@@ -238,6 +238,14 @@ class ConfigPanelServer:
     .field-card { background: #fff; border: 1px solid #ececec; border-radius: 10px; padding: 12px; }
     .field-card-title { font-weight: 600; margin-bottom: 6px; }
     .custom-mode-hint { margin: 2px 0 0; }
+    .preset-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .preset-apply-btn { padding: 6px 10px; font-size: 12px; }
+    .variable-browser { display: flex; flex-direction: column; gap: 12px; }
+    .variable-button-list { display: flex; flex-wrap: wrap; gap: 8px; }
+    .variable-button { border: 1px solid #d1d5db; background: #fff; border-radius: 999px; padding: 6px 10px; font-size: 12px; }
+    .variable-button.active { background: #111827; border-color: #111827; color: #fff; }
+    .variable-detail { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; }
+    .persistent-preview { margin-bottom: 14px; }
     @media (max-width: 1080px) {
       .template-editor-layout { grid-template-columns: 1fr; }
     }
@@ -262,10 +270,23 @@ class ConfigPanelServer:
     <div>
       <div id="custom_config_collapsed_hint" class="muted custom-mode-hint" data-i18n="custom_config_collapsed_hint">当前使用预设格式，切换到“自定义”后再配置图标、短标识、模板与预览。</div>
       <section id="custom_display_section" class="custom-config-section hidden">
+        <div class="field-stack persistent-preview">
+          <div class="preview-box">
+            <div class="preview-label" data-i18n="live_preview">实时预览</div>
+            <div class="preview-label" data-i18n="title_preview">标题预览</div>
+            <div id="title_preview" class="preview-row"></div>
+            <div style="height: 10px;"></div>
+            <div class="preview-label" data-i18n="menu_preview">菜单预览</div>
+            <div id="menu_preview" class="preview-row"></div>
+          </div>
+          <div class="field-card">
+            <div class="field-card-title" data-i18n="custom_preview_hint_title">何时需要这一区</div>
+            <div class="muted" data-i18n="custom_preview_hint">只有想手动定义展示样式时才需要使用这里；预设短格式/长格式会自动处理展示。</div>
+          </div>
+        </div>
         <div class="custom-config-tabs">
           <button type="button" class="custom-config-tab" data-custom-tab-button="exchange" data-i18n="custom_tab_exchange">交易所展示</button>
           <button type="button" class="custom-config-tab" data-custom-tab-button="template" data-i18n="custom_tab_template">模板编辑</button>
-          <button type="button" class="custom-config-tab" data-custom-tab-button="preview" data-i18n="custom_tab_preview">预览与提示</button>
         </div>
         <div id="custom_tab_exchange" class="custom-tab-panel">
           <div class="field-stack">
@@ -292,7 +313,7 @@ class ConfigPanelServer:
         <div id="custom_tab_template" class="custom-tab-panel">
           <div class="template-editor-layout">
             <div class="template-editor-main">
-              <p id="template_editor_hint" class="muted template-editor-hint" data-i18n="template_editor_hint">切到“自定义”后可直接编辑模板；右侧会按层级提示可用模板与变量。</p>
+              <p id="template_editor_hint" class="muted template-editor-hint" data-i18n="template_editor_hint">自定义就是直接修改模板；下面会给推荐预设，右侧可点变量查看其可能值。</p>
               <div class="editor-card">
                 <div class="editor-card-header">
                   <strong data-i18n="title_template">标题模板</strong>
@@ -307,32 +328,22 @@ class ConfigPanelServer:
                 </div>
                 <textarea id="menu_template"></textarea>
               </div>
+              <div class="editor-card">
+                <div class="editor-card-header">
+                  <strong data-i18n="template_presets">推荐预设</strong>
+                  <span class="muted" data-i18n="template_presets_hint">可直接套用下面的推荐模板作为起点。</span>
+                </div>
+                <div id="template_examples" class="reference-stack"></div>
+              </div>
             </div>
             <aside class="template-editor-side">
               <div class="sidebar-header">
-                <strong data-i18n="template_reference">侧边参考</strong>
+                <strong data-i18n="variable_browser">变量浏览</strong>
                 <span class="muted" data-i18n="template_composition_guide">推荐顺序：来源 → 交易对 → 价格 → 涨跌 → 状态</span>
               </div>
-              <div id="template_examples" class="reference-stack"></div>
               <div id="template_variables" class="reference-stack"></div>
               <div id="style_options" class="reference-stack"></div>
             </aside>
-          </div>
-        </div>
-        <div id="custom_tab_preview" class="custom-tab-panel">
-          <div class="field-stack">
-            <div class="preview-box">
-              <div class="preview-label" data-i18n="live_preview">实时预览</div>
-              <div class="preview-label" data-i18n="title_preview">标题预览</div>
-              <div id="title_preview" class="preview-row"></div>
-              <div style="height: 10px;"></div>
-              <div class="preview-label" data-i18n="menu_preview">菜单预览</div>
-              <div id="menu_preview" class="preview-row"></div>
-            </div>
-            <div class="field-card">
-              <div class="field-card-title" data-i18n="custom_preview_hint_title">何时需要这一区</div>
-              <div class="muted" data-i18n="custom_preview_hint">只有想手动定义展示样式时才需要使用这里；预设短格式/长格式会自动处理展示。</div>
-            </div>
           </div>
         </div>
       </section>
@@ -384,13 +395,14 @@ class ConfigPanelServer:
     let tickerRows = [];
     let symbolOptions = {};
     let currentCustomTab = 'exchange';
+    let currentVariableName = '';
     const I18N = {
       'zh-CN': {
         title: 'CoinPriceBar UI 配置面板', hint: '这里编辑的是 UI 展示配置与监控项配置。',
         language: '语言', exchange_enable: '启用交易所', exchange_short_names: '交易所短标识', exchange_icons: '交易所图标预览', max_visible: '显示数量',
         format_mode: '格式模式', icon_style: '交易所图标', template_editor: '模板编辑', title_template: '标题模板', menu_template: '菜单模板', template_examples: '模板例子',
         template_variables: '变量列表', style_options: '样式列表', template_reference: '侧边参考',
-        custom_display_config: '自定义展示', custom_tab_exchange: '交易所展示', custom_tab_template: '模板编辑', custom_tab_preview: '预览与提示',
+        custom_display_config: '自定义展示', custom_tab_exchange: '交易所展示', custom_tab_template: '模板编辑',
         live_preview: '实时预览', title_preview: '标题预览', menu_preview: '菜单预览',
         display_fields: '降级字段', display_fields_hint: '仅自定义格式使用，用于模板字段无法渲染时的备用展示顺序。', show_exchange_links: '显示交易所链接', performance_mode: '性能模式',
         refresh_interval: '自定义刷新频率（秒）', ticker_list: '监控交易对配置', enabled: '启用监控', visible: '显示',
@@ -400,19 +412,20 @@ class ConfigPanelServer:
         stable: '稳定', balanced: '平衡', realtime: '实时', custom: '自定义', short: '短格式', long: '长格式',
         none: '无图标', emoji: 'Emoji 图标', text: '文本图标', official: '官方图标', remove_btn: '删除',
         saved: '保存成功，已应用到状态栏。', loading: '加载中...', custom_only: '仅在自定义模式下可编辑模板。',
-        template_editor_hint: '切到“自定义”后可直接编辑模板；右侧会按层级提示可用模板与变量。', title_editor_hint: '显示在顶部状态栏，建议短一些。', menu_editor_hint: '显示在下拉菜单，可放更多字段。',
+        template_editor_hint: '自定义就是直接修改模板；下面会给推荐预设，右侧可点变量查看其可能值。', title_editor_hint: '显示在顶部状态栏，建议短一些。', menu_editor_hint: '显示在下拉菜单，可放更多字段。',
         template_composition_guide: '推荐顺序：来源 → 交易对 → 价格 → 涨跌 → 状态', possible_values: '可能值列表', text_value: '文本', number_value: '数值', title_slot: '标题', menu_slot: '菜单', both_slots: '标题/菜单',
         format_sidebar_hint: '预设模式会自动套用模板；自定义模式可自由编辑。', icon_sidebar_hint: '官方 Logo 优先走网络/缓存，失败再回退。', non_official_icon_hint: '文本 / Emoji / 空图标模式。',
         custom_config_collapsed_hint: '当前使用预设格式，切换到“自定义”后再配置图标、短标识、模板与预览。', icon_style_hint: '只有在自定义展示时才需要调整图标策略。', exchange_icons_hint: '官方图标模式显示预览，其它模式可直接编辑前缀。', exchange_short_names_hint: '用于 {exchange} / {exchange_short} 变量。',
         custom_preview_hint_title: '何时需要这一区', custom_preview_hint: '只有想手动定义展示样式时才需要使用这里；预设短格式/长格式会自动处理展示。',
-        performance_value_hint: '当前实际刷新频率：{label}（{value} 秒）', performance_custom_value_hint: '当前使用自定义刷新频率：{value} 秒'
+        performance_value_hint: '当前实际刷新频率：{label}（{value} 秒）', performance_custom_value_hint: '当前使用自定义刷新频率：{value} 秒',
+        template_presets: '推荐预设', template_presets_hint: '可直接套用下面的推荐模板作为起点。', variable_browser: '变量浏览', apply_title: '应用到标题', apply_menu: '应用到菜单', click_variable_hint: '点击上面的变量查看说明和可能值。'
       },
       'en-US': {
         title: 'CoinPriceBar UI Config Panel', hint: 'Edit UI display settings and monitored tickers here.',
         language: 'Language', exchange_enable: 'Enabled exchanges', exchange_short_names: 'Exchange short labels', exchange_icons: 'Exchange icon preview', max_visible: 'Visible count',
         format_mode: 'Format mode', icon_style: 'Exchange icon', template_editor: 'Template editor', title_template: 'Title template', menu_template: 'Menu template', template_examples: 'Template examples',
         template_variables: 'Variables', style_options: 'Styles', template_reference: 'Sidebar reference',
-        custom_display_config: 'Custom display', custom_tab_exchange: 'Exchange display', custom_tab_template: 'Template editor', custom_tab_preview: 'Preview & hints',
+        custom_display_config: 'Custom display', custom_tab_exchange: 'Exchange display', custom_tab_template: 'Template editor',
         live_preview: 'Live preview', title_preview: 'Title preview', menu_preview: 'Menu preview',
         display_fields: 'Fallback fields', display_fields_hint: 'Only used in Custom format as the fallback field order when a template cannot be rendered.', show_exchange_links: 'Show exchange links', performance_mode: 'Performance mode',
         refresh_interval: 'Custom refresh interval (seconds)', ticker_list: 'Monitored tickers', enabled: 'Enabled', visible: 'Visible',
@@ -422,12 +435,13 @@ class ConfigPanelServer:
         stable: 'Stable', balanced: 'Balanced', realtime: 'Realtime', custom: 'Custom', short: 'Short', long: 'Long',
         none: 'No icon', emoji: 'Emoji icons', text: 'Text icons', official: 'Official icons', remove_btn: 'Remove',
         saved: 'Saved successfully and applied to the menu bar.', loading: 'Loading...', custom_only: 'Templates are editable only in Custom mode.',
-        template_editor_hint: 'Switch to Custom to edit templates directly; the sidebar shows grouped templates and variables.', title_editor_hint: 'Shown in the menu bar title, so keep it short.', menu_editor_hint: 'Shown in the dropdown menu, so more fields fit here.',
+        template_editor_hint: 'Custom means editing the template directly; recommended presets are shown below, and you can click variables on the right to inspect values.', title_editor_hint: 'Shown in the menu bar title, so keep it short.', menu_editor_hint: 'Shown in the dropdown menu, so more fields fit here.',
         template_composition_guide: 'Recommended order: source → symbol → price → change → status', possible_values: 'Possible values', text_value: 'Text', number_value: 'Numeric', title_slot: 'Title', menu_slot: 'Menu', both_slots: 'Title/Menu',
         format_sidebar_hint: 'Preset modes lock template content; Custom mode lets you edit freely.', icon_sidebar_hint: 'Official logos prefer web/cache and fall back when unavailable.', non_official_icon_hint: 'Text / Emoji / empty icon mode.',
         custom_config_collapsed_hint: 'Preset format is active. Switch to Custom before editing icons, short labels, templates, or previews.', icon_style_hint: 'Only adjust icon strategy when you really need a custom display.', exchange_icons_hint: 'Official icon mode shows previews; other modes let you edit prefixes directly.', exchange_short_names_hint: 'Used by {exchange} / {exchange_short}.',
         custom_preview_hint_title: 'When to use this area', custom_preview_hint: 'Only use this section if you want to manually define the display style; short/long presets handle layout automatically.',
-        performance_value_hint: 'Current effective refresh interval: {label} ({value}s)', performance_custom_value_hint: 'Using custom refresh interval: {value}s'
+        performance_value_hint: 'Current effective refresh interval: {label} ({value}s)', performance_custom_value_hint: 'Using custom refresh interval: {value}s',
+        template_presets: 'Recommended presets', template_presets_hint: 'You can directly apply one of the recommended templates below as a starting point.', variable_browser: 'Variable browser', apply_title: 'Apply to title', apply_menu: 'Apply to menu', click_variable_hint: 'Click a variable above to view its description and possible values.'
       }
     };
 
@@ -440,6 +454,16 @@ class ConfigPanelServer:
       const el = document.getElementById('status');
       el.textContent = message || '';
       el.className = isError ? 'status error' : 'status';
+    }
+
+    function applyTemplatePreset(template, target) {
+      if (target === 'title' || target === 'both') {
+        document.getElementById('title_template').value = template;
+      }
+      if (target === 'menu' || target === 'both') {
+        document.getElementById('menu_template').value = template;
+      }
+      renderOneToOnePreview();
     }
 
     function activateCustomTab(tabName) {
@@ -588,9 +612,10 @@ class ConfigPanelServer:
         price: '67019.00',
         change: '↑+520.00',
         change_percent: '↑0.78%',
-        status: '在线',
+        status: '🟢',
         __exchange: exchange,
         __change_value: 1,
+        __connection_status: '',
       };
     }
 
@@ -609,7 +634,7 @@ class ConfigPanelServer:
       const titleRaw = formatTemplate(titleTemplate, context).trim() || `${context.exchange} ${context.symbol} ${context.price}`;
       const menuRaw = formatTemplate(menuTemplate, context).trim() || `${context.exchange} ${context.symbol} ${context.price}`;
       const titleText = withTrendSuffix(titleRaw, context.__change_value);
-      const menuText = withStatusSuffix(withTrendSuffix(menuRaw, context.__change_value), context.status);
+      const menuText = withStatusSuffix(withTrendSuffix(menuRaw, context.__change_value), context.__connection_status);
       const iconMarkup = iconHtml(context.__exchange);
       const officialPrefix = document.getElementById('icon_style').value === 'official' ? iconMarkup : '';
       document.getElementById('title_preview').innerHTML = `${officialPrefix}<span>${titleText}</span>`;
@@ -731,6 +756,10 @@ class ConfigPanelServer:
                     </div>
                     <code>${escapeHtml(item.template || '')}</code>
                     <div class="muted">${escapeHtml(preview)}</div>
+                    <div class="preset-actions">
+                      ${(item.target === 'title' || item.target === 'both') ? `<button type="button" class="preset-apply-btn" data-apply-template="${escapeHtml(item.template || '')}" data-apply-target="title">${tr('apply_title')}</button>` : ''}
+                      ${(item.target === 'menu' || item.target === 'both') ? `<button type="button" class="preset-apply-btn" data-apply-template="${escapeHtml(item.template || '')}" data-apply-target="menu">${tr('apply_menu')}</button>` : ''}
+                    </div>
                   </div>
                 `;
               }).join('')}
@@ -738,6 +767,9 @@ class ConfigPanelServer:
           </section>
         `;
       }).join('');
+      wrap.querySelectorAll('[data-apply-template]').forEach(button => {
+        button.addEventListener('click', () => applyTemplatePreset(button.dataset.applyTemplate || '', button.dataset.applyTarget || 'menu'));
+      });
     }
 
     function renderExchangeIcons(exchanges, values) {
@@ -761,45 +793,64 @@ class ConfigPanelServer:
     function renderTemplateVariables(variables) {
       const wrap = document.getElementById('template_variables');
       const groups = current.templateVariableGroups || [];
+      if (!currentVariableName && variables && variables.length) {
+        currentVariableName = variables[0].name;
+      }
       const grouped = new Map(groups.map(group => [group.key, []]));
       (variables || []).forEach(item => {
         const key = item.group || 'other';
         if (!grouped.has(key)) grouped.set(key, []);
         grouped.get(key).push(item);
       });
-      wrap.innerHTML = Array.from(grouped.entries()).map(([groupKey, items]) => {
+      const selected = (variables || []).find(item => item.name === currentVariableName) || (variables || [])[0] || null;
+      wrap.innerHTML = `
+        <div class="variable-browser">
+          ${Array.from(grouped.entries()).map(([groupKey, items]) => {
         if (!items.length) return '';
         const group = groups.find(item => item.key === groupKey) || { label: groupKey, description: '' };
         return `
           <section class="reference-group">
             <div class="reference-title">${escapeHtml(group.label || groupKey)}</div>
             <div class="muted">${escapeHtml(group.description || '')}</div>
-            <div class="variable-list">
+            <div class="variable-button-list">
               ${items.map(item => {
-                const typeLabel = item.value_type === 'number' ? tr('number_value') : tr('text_value');
-                const examples = Array.isArray(item.examples) && item.examples.length
-                  ? item.examples
-                  : (item.example ? [item.example] : []);
                 return `
-                  <div class="variable-card">
-                    <div class="variable-meta">
-                      <code>{${escapeHtml(item.name || '')}}</code>
-                      <span class="badge">${typeLabel}</span>
-                    </div>
-                    <div>${escapeHtml(item.description || '')}</div>
-                    ${examples.length ? `
-                      <div class="muted">${tr('possible_values')}</div>
-                      <ul class="variable-example-list">
-                        ${examples.map(example => `<li>${escapeHtml(example)}</li>`).join('')}
-                      </ul>
-                    ` : ''}
-                  </div>
+                  <button type="button" class="variable-button ${item.name === currentVariableName ? 'active' : ''}" data-variable-name="${escapeHtml(item.name || '')}">{${escapeHtml(item.name || '')}}</button>
                 `;
               }).join('')}
             </div>
           </section>
         `;
-      }).join('');
+          }).join('')}
+          <div class="variable-detail">
+            ${selected ? (() => {
+              const typeLabel = selected.value_type === 'number' ? tr('number_value') : tr('text_value');
+              const examples = Array.isArray(selected.examples) && selected.examples.length
+                ? selected.examples
+                : (selected.example ? [selected.example] : []);
+              return `
+                <div class="variable-meta">
+                  <code>{${escapeHtml(selected.name || '')}}</code>
+                  <span class="badge">${typeLabel}</span>
+                </div>
+                <div>${escapeHtml(selected.description || '')}</div>
+                ${examples.length ? `
+                  <div class="muted">${tr('possible_values')}</div>
+                  <ul class="variable-example-list">
+                    ${examples.map(example => `<li>${escapeHtml(example)}</li>`).join('')}
+                  </ul>
+                ` : ''}
+              `;
+            })() : `<div class="muted">${tr('click_variable_hint')}</div>`}
+          </div>
+        </div>
+      `;
+      wrap.querySelectorAll('[data-variable-name]').forEach(button => {
+        button.addEventListener('click', () => {
+          currentVariableName = button.dataset.variableName || '';
+          renderTemplateVariables(variables || []);
+        });
+      });
     }
 
     function renderStyleOptions() {

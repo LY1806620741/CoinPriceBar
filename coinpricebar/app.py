@@ -566,6 +566,7 @@ class CoinPriceBarApp(rumps.App):
         exchange_full = self._menu_label(snapshot.exchange)
         exchange_icon = (self.config.exchange_icons or {}).get(snapshot.exchange.lower(), "")
         price_text = "异常" if snapshot.has_error else ("加载中..." if snapshot.is_first and snapshot.price == 0 else f"{snapshot.price:.2f}")
+        status_text = snapshot.status or ("🟢" if snapshot.change > 0 else "🔴" if snapshot.change < 0 else "⚪")
         return {
             "exchange": exchange_short,
             "exchange_short": exchange_short,
@@ -575,7 +576,7 @@ class CoinPriceBarApp(rumps.App):
             "price": price_text,
             "change": change_text,
             "change_percent": change_percent_text,
-            "status": snapshot.status or "在线",
+            "status": status_text,
         }
 
     def _render_text(self, snapshot: MarketSnapshot, template: str, is_title: bool = False) -> str:

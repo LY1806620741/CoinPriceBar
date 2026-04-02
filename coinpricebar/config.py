@@ -135,9 +135,9 @@ TEMPLATE_VARIABLES = [
         "name": "status",
         "group": "connection_state",
         "value_type": "text",
-        "example": "在线",
-        "examples": ["在线（正常）", "🟡（重连中）", "⚫（离线/异常）"],
-        "description": "连接状态；正常时通常不显示，异常时会出现状态提示。",
+        "example": "🟢",
+        "examples": ["🟢（在线且上涨）", "🔴（在线且下跌）", "⚪（在线且横盘）", "🟡（重连中）", "⚫（离线/异常）"],
+        "description": "连接/走势状态；在线时会根据涨跌或横盘显示状态点。",
     },
 ]
 TEMPLATE_EXAMPLES = [
