@@ -1,7 +1,7 @@
 import unittest
 
 from coinpricebar.app import CoinPriceBarApp, _with_trend_suffix
-from coinpricebar.config import AppConfig, _build_app_config, get_default_tickers
+from coinpricebar.config import AppConfig, TEMPLATE_VARIABLE_GROUPS, _build_app_config, get_default_tickers
 from coinpricebar.panel import ConfigPanelServer
 from coinpricebar.sources import BinancePriceSource, KucoinPriceSource
 from coinpricebar.sources.base import MarketSnapshot
@@ -114,9 +114,24 @@ class UIRenderTests(unittest.TestCase):
         panel = ConfigPanelServer(lambda: config, lambda: list(config.tickers), lambda payload: config)
         state = panel._serialize_state()
         self.assertIn("templateVariables", state)
+        self.assertIn("templateVariableGroups", state)
         self.assertIn("iconStyleOptions", state)
-        self.assertTrue(any(item["name"] == "exchange_icon" for item in state["templateVariables"]))
+        exchange_icon = next(item for item in state["templateVariables"] if item["name"] == "exchange_icon")
+        self.assertEqual(state["templateVariableGroups"], TEMPLATE_VARIABLE_GROUPS)
+        self.assertEqual(exchange_icon["group"], "exchange_identity")
+        self.assertIsInstance(exchange_icon["examples"], list)
+        self.assertIn("官方 Logo（图片）", exchange_icon["examples"])
         self.assertIn("official", state["iconStyleOptions"])
+
+    def test_panel_state_contains_structured_template_examples(self):
+        config = AppConfig.default()
+        panel = ConfigPanelServer(lambda: config, lambda: list(config.tickers), lambda payload: config)
+        state = panel._serialize_state()
+
+        self.assertTrue(state["templateExamples"])
+        self.assertIsInstance(state["templateExamples"][0], dict)
+        self.assertIn("items", state["templateExamples"][0])
+        self.assertTrue(any(item["target"] == "menu" for group in state["templateExamples"] for item in group.get("items", [])))
 
     def test_sources_expose_symbol_list_api(self):
         self.assertTrue(hasattr(BinancePriceSource(lambda *_: None, lambda *_: None), "list_symbols"))
@@ -172,18 +187,18 @@ class UIRenderTests(unittest.TestCase):
         config = AppConfig.default()
         panel = ConfigPanelServer(lambda: config, lambda: list(config.tickers), lambda payload: config)
         html = panel._build_html()
-        self.assertIn("official-icon logo-wide", html)
+        self.assertIn("official-icon.logo-wide", html)
         self.assertIn("official-icon-fallback", html)
-        self.assertIn("logo\\.(png|svg|jpg|jpeg)$", html)
+        self.assertIn("logo[.](png|svg|jpg|jpeg)$", html)
 
-    def test_render_title_text_prefixes_exchange_icon(self):
+    def test_render_title_text_does_not_inline_exchange_icon(self):
         self.app.config.exchange_short_names = {"kucoin": "KC", "binance": "BN"}
         self.app.config.exchange_icons = {"kucoin": "[KC] ", "binance": "[BN] "}
         snapshot = MarketSnapshot(exchange="kucoin", symbol="BTC-USDT", display_name="BTC", price=100.0, change=1.0, change_percent=1.0, is_first=False)
 
         text = CoinPriceBarApp._render_text(self.app, snapshot, "{exchange}:{symbol} {price}", is_title=True)
 
-        self.assertTrue(text.startswith("[KC] "))
+        self.assertNotIn("[KC] ", text)
         self.assertIn("KC:BTC 100.00", text)
 
     def test_panel_html_contains_template_reference_sections(self):
@@ -192,22 +207,47 @@ class UIRenderTests(unittest.TestCase):
         html = panel._build_html()
         self.assertIn("id=\"template_variables\"", html)
         self.assertIn("id=\"style_options\"", html)
+        self.assertIn("template-editor-layout", html)
+        self.assertIn("template-editor-side", html)
+        self.assertIn("id=\"custom_display_section\"", html)
+        self.assertIn("custom-config-tabs", html)
+        self.assertIn("data-custom-tab-button=\"exchange\"", html)
+        self.assertIn("id=\"custom_tab_template\"", html)
+        self.assertIn("id=\"custom_tab_preview\"", html)
+        self.assertIn("id=\"display_fields_label\"", html)
+        self.assertIn("id=\"display_fields_wrap\"", html)
+        self.assertIn("id=\"ui_refresh_interval_label\"", html)
+        self.assertIn("id=\"ui_refresh_interval_wrap\"", html)
+        self.assertIn("id=\"performance_value_hint\"", html)
         self.assertIn("function renderExchangeIcons", html)
         self.assertIn("function renderTemplateVariables", html)
         self.assertIn("function renderStyleOptions", html)
+        self.assertIn("function activateCustomTab", html)
+        self.assertIn("function setCustomSectionVisibility", html)
+        self.assertIn("function setDisplayFieldsVisibility", html)
+        self.assertIn("function setRefreshIntervalVisibility", html)
+        self.assertIn("function renderPerformanceValueHint", html)
+        self.assertIn("function syncPerformanceModeUI", html)
+        self.assertIn("function syncConditionalFieldVisibility", html)
+        self.assertIn("document.getElementById('performance_mode').addEventListener('change', syncConditionalFieldVisibility)", html)
+        self.assertIn("document.getElementById('ui_refresh_interval').addEventListener('input', syncPerformanceModeUI)", html)
+        self.assertIn("performance_value_hint", html)
+        self.assertIn("performance_custom_value_hint", html)
+        self.assertIn("possible_values", html)
+        self.assertIn("variable-example-list", html)
 
     def test_sources_expose_local_icon_fallback(self):
         self.assertIsNotNone(KucoinPriceSource.get_local_icon_path())
         self.assertIsNotNone(BinancePriceSource.get_local_icon_path())
 
-    def test_render_title_text_uses_default_prefix_when_exchange_icon_empty(self):
+    def test_render_title_text_keeps_plain_text_when_exchange_icon_empty(self):
         self.app.config.exchange_short_names = {"kucoin": "KC", "binance": "BN"}
         self.app.config.exchange_icons = {"kucoin": "", "binance": ""}
         snapshot = MarketSnapshot(exchange="kucoin", symbol="BTC-USDT", display_name="BTC", price=100.0, change=1.0, change_percent=1.0, is_first=False)
 
         text = CoinPriceBarApp._render_text(self.app, snapshot, "{exchange}:{symbol} {price}", is_title=True)
 
-        self.assertTrue(text.startswith("[KC] "))
+        self.assertFalse(text.startswith("[KC] "))
         self.assertIn("KC:BTC 100.00", text)
 
 

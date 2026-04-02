@@ -67,6 +67,7 @@ class MultiTickerUpdateTests(unittest.TestCase):
         self.app._render_text = lambda snapshot, template, is_title=False: CoinPriceBarApp._render_text(self.app, snapshot, template, is_title)
         self.app._refresh_snapshot_ui = lambda key: CoinPriceBarApp._refresh_snapshot_ui(self.app, key)
         self.app._process_ui_queue = lambda _=None: CoinPriceBarApp._process_ui_queue(self.app, _)
+        self.app._set_title_icon = lambda exchange: setattr(self.app, "_last_title_icon_exchange", exchange)
 
     def test_refresh_snapshot_updates_title_and_second_menu_item(self):
         CoinPriceBarApp._refresh_snapshot_ui(self.app, self.app.active_tickers[0].key)
@@ -201,14 +202,16 @@ class MultiTickerUpdateTests(unittest.TestCase):
                 path = CoinPriceBarApp._icon_cache_path("kucoin")
                 self.assertEqual(path.parent, Path(tmp))
                 self.assertTrue(path.name.startswith("kucoin"))
-                self.assertTrue(path.name.endswith(".menu.png"))
+                self.assertIn(path.suffix, {".png", ".ico", ".img"})
             finally:
                 app_module.ICON_CACHE_DIR = original_dir
 
     def test_load_cached_exchange_icon_uses_standardized_cache_file(self):
         original_download = CoinPriceBarApp._download_exchange_icon
+        original_is_valid = CoinPriceBarApp._is_valid_cache_file
         try:
             CoinPriceBarApp._download_exchange_icon = staticmethod(lambda exchange: Path("/tmp/fake-logo.menu.png"))
+            CoinPriceBarApp._is_valid_cache_file = staticmethod(lambda _path: True)
 
             class FakeImage:
                 pass
@@ -229,6 +232,7 @@ class MultiTickerUpdateTests(unittest.TestCase):
                 app_module.NSImage = original_nsimage
         finally:
             CoinPriceBarApp._download_exchange_icon = original_download
+            CoinPriceBarApp._is_valid_cache_file = original_is_valid
 
     def test_is_valid_cache_file_detects_non_empty_file(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -44,21 +44,131 @@ ICON_STYLE_OPTIONS = {
     "official": "官方 Logo",
 }
 DEFAULT_ICON_STYLE = "official"
+TEMPLATE_VARIABLE_GROUPS = [
+    {
+        "key": "exchange_identity",
+        "label": "1. 交易所标识",
+        "description": "决定来源名称、简称和图标前缀，通常放在模板最前面。",
+    },
+    {
+        "key": "ticker_identity",
+        "label": "2. 交易对标识",
+        "description": "用于显示币种简称或完整交易对。",
+    },
+    {
+        "key": "market_numbers",
+        "label": "3. 行情数值",
+        "description": "价格和涨跌数据，通常放在模板中间。",
+    },
+    {
+        "key": "connection_state",
+        "label": "4. 状态补充",
+        "description": "连接/异常提示，建议放在模板尾部。",
+    },
+]
 TEMPLATE_VARIABLES = [
-    {"name": "exchange", "example": "KC", "description": "交易所短名称"},
-    {"name": "exchange_short", "example": "KC", "description": "交易所短名称（同 exchange）"},
-    {"name": "exchange_full", "example": "KuCoin", "description": "交易所完整名称"},
-    {"name": "exchange_icon", "example": "🟢 ", "description": "交易所图标/前缀"},
-    {"name": "symbol", "example": "BTC", "description": "显示名称或交易对"},
-    {"name": "price", "example": "67019.00", "description": "当前价格"},
-    {"name": "change", "example": "↑+520.00", "description": "价格涨跌额"},
-    {"name": "change_percent", "example": "↑0.78%", "description": "价格涨跌幅"},
-    {"name": "status", "example": "在线", "description": "连接状态"},
+    {
+        "name": "exchange",
+        "group": "exchange_identity",
+        "value_type": "text",
+        "example": "KC",
+        "examples": ["KC", "BN"],
+        "description": "交易所短名称，适合紧凑标题。",
+    },
+    {
+        "name": "exchange_short",
+        "group": "exchange_identity",
+        "value_type": "text",
+        "example": "KC",
+        "examples": ["KC", "BN"],
+        "description": "交易所短名称（与 exchange 相同，便于语义区分）。",
+    },
+    {
+        "name": "exchange_full",
+        "group": "exchange_identity",
+        "value_type": "text",
+        "example": "KuCoin",
+        "examples": ["KuCoin", "Binance"],
+        "description": "交易所完整名称，适合长格式菜单。",
+    },
+    {
+        "name": "exchange_icon",
+        "group": "exchange_identity",
+        "value_type": "text",
+        "example": "🟢 ",
+        "examples": ["官方 Logo（图片）", "🟢 ", "🟡 ", "[KC] ", "[BN] ", ""],
+        "description": "交易所图标/前缀；官方模式下会优先使用 Logo，失败时回退。",
+    },
+    {
+        "name": "symbol",
+        "group": "ticker_identity",
+        "value_type": "text",
+        "example": "BTC",
+        "examples": ["BTC", "ETH", "KCS", "BTC-USDT", "ETH-USDT"],
+        "description": "显示名称或交易对本身。",
+    },
+    {
+        "name": "price",
+        "group": "market_numbers",
+        "value_type": "number",
+        "example": "67019.00",
+        "examples": ["67019.00", "2060.97", "8.0810"],
+        "description": "当前价格。",
+    },
+    {
+        "name": "change",
+        "group": "market_numbers",
+        "value_type": "number",
+        "example": "↑+520.00",
+        "examples": ["↑+520.00", "↓-18.03", "0.00"],
+        "description": "价格涨跌额。",
+    },
+    {
+        "name": "change_percent",
+        "group": "market_numbers",
+        "value_type": "number",
+        "example": "↑0.78%",
+        "examples": ["↑0.78%", "↓-1.26%", "0.00%"],
+        "description": "价格涨跌幅。",
+    },
+    {
+        "name": "status",
+        "group": "connection_state",
+        "value_type": "text",
+        "example": "在线",
+        "examples": ["在线（正常）", "🟡（重连中）", "⚫（离线/异常）"],
+        "description": "连接状态；正常时通常不显示，异常时会出现状态提示。",
+    },
 ]
 TEMPLATE_EXAMPLES = [
-    "{exchange_icon}{exchange}:{symbol} {price}",
-    "{exchange_icon}{exchange}:{symbol} {price} ({change_percent})",
-    "{exchange_full} {symbol} 最新价 {price} 状态 {status}",
+    {
+        "key": "title",
+        "label": "1. 标题栏模板",
+        "description": "顶部状态栏空间有限，建议优先保留交易对与价格。",
+        "items": [
+            {"name": "极简价格", "template": "{exchange_icon}{symbol} {price}", "target": "title"},
+            {"name": "带来源", "template": "{exchange_icon}{exchange}:{symbol} {price}", "target": "title"},
+            {"name": "完整名称", "template": "{exchange_icon}{exchange_full} {symbol} {price}", "target": "title"},
+        ],
+    },
+    {
+        "key": "menu",
+        "label": "2. 菜单项模板",
+        "description": "下拉菜单空间更充足，适合放涨跌、状态等补充信息。",
+        "items": [
+            {"name": "常用涨跌", "template": "{exchange_icon}{symbol} {price} ({change_percent})", "target": "menu"},
+            {"name": "来源 + 涨跌", "template": "{exchange_icon}{exchange}:{symbol} {price} ({change_percent})", "target": "menu"},
+            {"name": "完整状态", "template": "{exchange_full} {symbol} 最新价 {price} 涨跌 {change_percent} 状态 {status}", "target": "menu"},
+        ],
+    },
+    {
+        "key": "compose",
+        "label": "3. 组合建议",
+        "description": "推荐顺序：来源/图标 → 交易对 → 价格 → 涨跌 → 状态。",
+        "items": [
+            {"name": "推荐结构", "template": "{exchange_icon}{symbol} {price} {change_percent} {status}", "target": "both"},
+        ],
+    },
 ]
 SUPPORTED_FIELDS = {
     "exchange",
@@ -336,6 +446,7 @@ def _serialize_default_config(default_config: AppConfig) -> Dict[str, object]:
             "title_template": default_config.title_template,
             "menu_template": default_config.menu_template,
             "template_examples": list(TEMPLATE_EXAMPLES),
+            "template_variable_groups": list(TEMPLATE_VARIABLE_GROUPS),
             "template_variables": list(TEMPLATE_VARIABLES),
             "icon_style_options": dict(ICON_STYLE_OPTIONS),
             "exchange_icons": dict(default_config.exchange_icons),
