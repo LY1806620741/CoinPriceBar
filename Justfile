@@ -22,6 +22,16 @@ bootstrap:
 run:
   {{python}} KCSApp.py
 
+reset-runtime:
+  rm -f config.json
+  rm -f kucoin_status.log
+
+rerun:
+  just reset-runtime
+  {{python}} KCSApp.py
+
+reset-state: reset-runtime
+
 # Run the menu bar app with debug logging enabled
 run-debug:
   PYTHONLOGLEVEL=DEBUG {{python}} KCSApp.py
@@ -33,6 +43,14 @@ panel:
 # Run the standard test suite
 test:
   {{unittest}}
+
+# Install frontend test dependencies
+ui-install:
+  npm install
+
+# Run HTML/DOM UI tests
+ui-test:
+  npm run test:ui
 
 # Run a single unittest module, e.g. `just test-file tests.test_ui_render`
 test-file module:
@@ -65,3 +83,6 @@ symbols:
 
 # Run install + tests as a quick local verification
 check: install test
+
+check-ui: install test ui-test
+

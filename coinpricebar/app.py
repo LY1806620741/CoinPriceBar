@@ -292,10 +292,7 @@ class CoinPriceBarApp(rumps.App):
         )
 
     def _visible_tickers(self) -> list[TickerConfig]:
-        ordered = sorted(
-            [ticker for ticker in self.all_tickers if ticker.enabled],
-            key=lambda ticker: (self._get_ticker_preference(ticker).order, ticker.key),
-        )
+        ordered = [ticker for ticker in self.all_tickers if ticker.enabled]
         visible = [ticker for ticker in ordered if self._get_ticker_preference(ticker).visible]
         return visible[: max(1, self.config.max_visible)]
 

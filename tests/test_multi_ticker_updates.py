@@ -4,7 +4,7 @@ from pathlib import Path
 from queue import Queue
 
 from coinpricebar.app import CoinPriceBarApp
-from coinpricebar.config import AppConfig, TickerConfig
+from coinpricebar.config import AppConfig, TickerConfig, UITickerPreference
 from coinpricebar.sources.base import MarketSnapshot
 
 
@@ -81,6 +81,22 @@ class MultiTickerUpdateTests(unittest.TestCase):
         self.assertIn("ETH", second_title)
         self.assertIn("↓", second_title)
         self.assertNotIn("加载中", second_title)
+
+    def test_visible_tickers_follow_config_ticker_sequence_instead_of_pref_order(self):
+        self.app.all_tickers = [
+            TickerConfig(exchange="binance", symbol="ETH-USDT", display_name="ETH"),
+            TickerConfig(exchange="kucoin", symbol="BTC-USDT", display_name="BTC"),
+        ]
+        self.app.config.max_visible = 2
+        self.app.config.ticker_preferences = {
+            "kucoin::btc-usdt": UITickerPreference(key="kucoin::btc-usdt", visible=True, order=0, pinned_title=False),
+            "binance::eth-usdt": UITickerPreference(key="binance::eth-usdt", visible=True, order=1, pinned_title=True),
+        }
+        self.app._get_ticker_preference = lambda ticker: CoinPriceBarApp._get_ticker_preference(self.app, ticker)
+
+        visible = CoinPriceBarApp._visible_tickers(self.app)
+
+        self.assertEqual([ticker.key for ticker in visible], ["binance::ETH-USDT", "kucoin::BTC-USDT"])
 
     def test_price_update_flow_replaces_loading_state_for_visible_item(self):
         target_key = self.app.active_tickers[1].key

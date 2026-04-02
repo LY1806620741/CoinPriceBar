@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from coinpricebar.app import CoinPriceBarApp, _with_trend_suffix
 from coinpricebar.config import AppConfig, TEMPLATE_VARIABLE_GROUPS, _build_app_config, get_default_tickers
@@ -94,6 +95,27 @@ class UIRenderTests(unittest.TestCase):
         self.assertEqual(config.format_mode, "long")
         self.assertIn("{exchange_full}", config.title_template)
         self.assertIn("状态 {status}", config.menu_template)
+
+    def test_build_app_config_normalizes_preference_order_to_ticker_sequence(self):
+        config = _build_app_config(
+            {
+                "ui": {
+                    "tickers": [
+                        {"exchange": "binance", "symbol": "ETH-USDT", "display_name": "ETH", "enabled": True},
+                        {"exchange": "kucoin", "symbol": "BTC-USDT", "display_name": "BTC", "enabled": True},
+                    ],
+                    "ticker_preferences": [
+                        {"key": "kucoin::BTC-USDT", "visible": True, "order": 0, "pinned_title": False},
+                        {"key": "binance::ETH-USDT", "visible": True, "order": 1, "pinned_title": True},
+                    ],
+                }
+            },
+            AppConfig.default(),
+        )
+        self.assertEqual([ticker.key for ticker in config.tickers], ["binance::ETH-USDT", "kucoin::BTC-USDT"])
+        self.assertEqual(config.ticker_preferences["binance::eth-usdt"].order, 0)
+        self.assertEqual(config.ticker_preferences["kucoin::btc-usdt"].order, 1)
+        self.assertTrue(config.ticker_preferences["binance::eth-usdt"].pinned_title)
 
     def test_official_icon_style_is_supported(self):
         config = _build_app_config({"ui": {"icon_style": "official"}}, AppConfig.default())
@@ -196,6 +218,13 @@ class UIRenderTests(unittest.TestCase):
         self.assertIn('<html lang="zh-CN">', html)
         self.assertNotIn('\\"', html)
 
+    def test_panel_html_is_loaded_from_standalone_file(self):
+        config = AppConfig.default()
+        panel = ConfigPanelServer(lambda: config, lambda: list(config.tickers), lambda payload: config)
+        html = panel._build_html()
+        file_html = Path("/Users/aiden/IdeaProjects/github/CoinPriceBar/coinpricebar/panel.html").read_text(encoding="utf-8")
+        self.assertEqual(html, file_html)
+
     def test_panel_html_contains_logo_fallback_support(self):
         config = AppConfig.default()
         panel = ConfigPanelServer(lambda: config, lambda: list(config.tickers), lambda payload: config)
@@ -244,6 +273,16 @@ class UIRenderTests(unittest.TestCase):
         self.assertIn("function setCustomSectionVisibility", html)
         self.assertIn("function setDisplayFieldsVisibility", html)
         self.assertIn("function setRefreshIntervalVisibility", html)
+        self.assertIn("function commitTickerRowDomOrder", html)
+        self.assertIn("Sortable.min.js", html)
+        self.assertIn("let tickerSortable = null", html)
+        self.assertIn("function initTickerSortable", html)
+        self.assertIn("new window.Sortable", html)
+        self.assertIn("handle: '.drag-handle'", html)
+        self.assertIn("draggable: 'tr[data-key]'", html)
+        self.assertIn("onEnd()", html)
+        self.assertIn('class="drag-handle">☰</span>', html)
+        self.assertIn('id="ticker_rows"', html)
         self.assertIn("function renderPerformanceValueHint", html)
         self.assertIn("function syncPerformanceModeUI", html)
         self.assertIn("function syncConditionalFieldVisibility", html)

@@ -423,6 +423,27 @@ def _load_ticker_preferences(raw_tickers: object, fallback: Dict[str, UITickerPr
     return merged
 
 
+def _normalize_ticker_preferences_for_tickers(
+    preferences: Dict[str, UITickerPreference],
+    tickers: List[TickerConfig],
+) -> Dict[str, UITickerPreference]:
+    normalized: Dict[str, UITickerPreference] = {}
+    pinned_key = next((key for key, pref in preferences.items() if pref.pinned_title), "")
+    for index, ticker in enumerate(tickers):
+        key = ticker.key.lower()
+        existing = preferences.get(key)
+        normalized[key] = UITickerPreference(
+            key=key,
+            visible=existing.visible if existing else True,
+            order=index,
+            pinned_title=(key == pinned_key) if pinned_key else index == 0,
+        )
+    if normalized and not any(pref.pinned_title for pref in normalized.values()):
+        first_key = tickers[0].key.lower()
+        normalized[first_key].pinned_title = True
+    return normalized
+
+
 def _serialize_tickers(tickers: List[TickerConfig]) -> List[Dict[str, object]]:
     return [
         {
@@ -504,6 +525,9 @@ def _build_app_config(raw: Dict[str, object], default_config: AppConfig) -> AppC
     except (TypeError, ValueError):
         title_index = default_config.title_index
 
+    ticker_preferences = _load_ticker_preferences(ui.get("ticker_preferences") or ui.get("tickers"), fallback_prefs)
+    ticker_preferences = _normalize_ticker_preferences_for_tickers(ticker_preferences, tickers)
+
     return AppConfig(
         max_visible=max_visible,
         title_index=title_index,
@@ -514,7 +538,7 @@ def _build_app_config(raw: Dict[str, object], default_config: AppConfig) -> AppC
         icon_style=icon_style,
         exchange_icons=_load_exchange_icons(ui.get("exchange_icons"), icon_style),
         show_exchange_links=bool(ui.get("show_exchange_links", default_config.show_exchange_links)),
-        ticker_preferences=_load_ticker_preferences(ui.get("ticker_preferences") or ui.get("tickers"), fallback_prefs),
+        ticker_preferences=ticker_preferences,
         ui_refresh_interval=ui_refresh_interval,
         performance_mode=performance_mode,
         language=_normalize_language(ui.get("language", default_config.language)),

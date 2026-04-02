@@ -1,0 +1,13 @@
+{
+  "name": "coinpricebar-ui-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:ui": "node --test tests/ui/*.test.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0",
+    "sortablejs": "^1.15.6"
+  }
+}
+
