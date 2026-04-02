@@ -8,6 +8,8 @@ APP = ["KCSApp.py"]
 APP_NAME = "CoinPriceBar"  # .app 名称
 BUNDLE_ID = "com.ly1806620741.CoinPriceBar"  # Bundle ID（唯一）
 VERSION = os.getenv("APP_VERSION", "1.0.0")
+PACKAGE_NAME = "coinpricebar"
+SOURCES_PACKAGE = "coinpricebar.sources"
 
 ICON_FILE = "icon.icns"
 
@@ -43,14 +45,18 @@ OPTIONS = {
         "AppKit",
         "Foundation",
         "kucoin_universal_sdk",
-        "coinpricebar",
-        "coinpricebar.main",
-        "coinpricebar.app",
-        "coinpricebar.config",
-        "coinpricebar.sources",
-        "coinpricebar.sources.kucoin",
-        "coinpricebar.sources.binance",
-        "coinpricebar.panel",
+        PACKAGE_NAME,
+        f"{PACKAGE_NAME}.main",
+        f"{PACKAGE_NAME}.app",
+        f"{PACKAGE_NAME}.config",
+        SOURCES_PACKAGE,
+        f"{SOURCES_PACKAGE}.base",
+        f"{SOURCES_PACKAGE}.kucoin",
+        f"{SOURCES_PACKAGE}.binance",
+        f"{SOURCES_PACKAGE}.binance_c2c",
+        f"{SOURCES_PACKAGE}.binance_futures",
+        f"{SOURCES_PACKAGE}.kucoin_futures",
+        f"{PACKAGE_NAME}.panel",
     ],
     "excludes": [
         "tkinter",
@@ -67,7 +73,8 @@ OPTIONS = {
     ],
     "packages": [
         "kucoin_universal_sdk",
-        "coinpricebar",
+        PACKAGE_NAME,
+        SOURCES_PACKAGE,
     ],
 }
 
@@ -75,6 +82,10 @@ setup(
     app=APP,
     name=APP_NAME,
     data_files=data_files,
+    package_data={
+        PACKAGE_NAME: ["panel.html", "static/*.js"],
+        SOURCES_PACKAGE: ["*.png", "*.ico"],
+    },
+    include_package_data=True,
     options={"py2app": OPTIONS},
-    setup_requires=["py2app"],
 )
