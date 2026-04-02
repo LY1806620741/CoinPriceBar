@@ -17,11 +17,14 @@ from Foundation import NSObject
 
 from .config import AppConfig, DEFAULT_CONFIG_PATH, OFFICIAL_EXCHANGE_ICON_URLS, TickerConfig, UITickerPreference, get_default_tickers, load_app_config, normalize_symbol
 from .panel import ConfigPanelServer
-from .sources import BasePriceSource, BinancePriceSource, KucoinPriceSource, MarketSnapshot
+from .sources import BasePriceSource, BinanceC2CPriceSource, BinanceFuturesPriceSource, BinancePriceSource, KucoinFuturesPriceSource, KucoinPriceSource, MarketSnapshot
 
 SOURCE_ICON_MAP = {
     "kucoin": KucoinPriceSource,
     "binance": BinancePriceSource,
+    "binance_c2c": BinanceC2CPriceSource,
+    "kucoin_futures": KucoinFuturesPriceSource,
+    "binance_futures": BinanceFuturesPriceSource,
 }
 
 LOG_CONFIG = {
@@ -49,6 +52,18 @@ EXCHANGE_URLS = {
         "label": "Binance",
         "home": "https://www.binance.com/",
     },
+    "binance_c2c": {
+        "label": "Binance C2C",
+        "home": "https://p2p.binance.com/",
+    },
+    "kucoin_futures": {
+        "label": "KuCoin Futures",
+        "home": "https://www.kucoin.com/futures",
+    },
+    "binance_futures": {
+        "label": "Binance Futures",
+        "home": "https://www.binance.com/en/futures/home",
+    },
 }
 
 logging.basicConfig(**LOG_CONFIG)
@@ -56,6 +71,9 @@ logging.basicConfig(**LOG_CONFIG)
 EXCHANGE_MENU_ICON_STYLE = {
     "kucoin": {"bg": (0.14, 0.74, 0.63, 1.0), "fg": (1.0, 1.0, 1.0, 1.0), "text": "K"},
     "binance": {"bg": (0.95, 0.71, 0.09, 1.0), "fg": (0.1, 0.1, 0.1, 1.0), "text": "B"},
+    "binance_c2c": {"bg": (0.95, 0.71, 0.09, 1.0), "fg": (0.1, 0.1, 0.1, 1.0), "text": "C"},
+    "kucoin_futures": {"bg": (0.14, 0.74, 0.63, 1.0), "fg": (1.0, 1.0, 1.0, 1.0), "text": "F"},
+    "binance_futures": {"bg": (0.95, 0.71, 0.09, 1.0), "fg": (0.1, 0.1, 0.1, 1.0), "text": "F"},
 }
 MENU_ICON_SIZE = 18
 ICON_CACHE_DIR = Path(__file__).resolve().parent.parent / ".cache" / "exchange_icons"
@@ -104,6 +122,12 @@ def build_trade_url(exchange: str, symbol: str) -> str | None:
         return EXCHANGE_URLS["kucoin"]["spot_trade"].format(base, quote)
     if exchange.lower() == "binance":
         return f"https://www.binance.com/en/trade/{base}_{quote}?type=spot"
+    if exchange.lower() == "binance_c2c":
+        return f"https://p2p.binance.com/en/trade/sell/{base}?fiat={quote}&payment=ALL"
+    if exchange.lower() == "binance_futures":
+        return f"https://www.binance.com/en/futures/{base}{quote}"
+    if exchange.lower() == "kucoin_futures":
+        return f"https://www.kucoin.com/futures/trade/{normalize_symbol(symbol).replace('-', '')}"
     return None
 
 
@@ -128,6 +152,9 @@ class MultiSourcePriceMonitor:
         exchange_map = {
             "kucoin": KucoinPriceSource,
             "binance": BinancePriceSource,
+            "binance_c2c": BinanceC2CPriceSource,
+            "kucoin_futures": KucoinFuturesPriceSource,
+            "binance_futures": BinanceFuturesPriceSource,
         }
         for exchange in {ticker.exchange.lower() for ticker in self.active_tickers if ticker.enabled}:
             source_cls = exchange_map.get(exchange)

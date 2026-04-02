@@ -1,10 +1,10 @@
 import unittest
 from pathlib import Path
 
-from coinpricebar.app import CoinPriceBarApp, _with_trend_suffix
+from coinpricebar.app import CoinPriceBarApp, _with_trend_suffix, build_trade_url
 from coinpricebar.config import AppConfig, TEMPLATE_VARIABLE_GROUPS, _build_app_config, get_default_tickers
 from coinpricebar.panel import ConfigPanelServer
-from coinpricebar.sources import BinancePriceSource, KucoinPriceSource
+from coinpricebar.sources import BinanceC2CPriceSource, BinanceFuturesPriceSource, BinancePriceSource, KucoinFuturesPriceSource, KucoinPriceSource
 from coinpricebar.sources.base import MarketSnapshot
 
 
@@ -39,12 +39,16 @@ class UIRenderTests(unittest.TestCase):
     def test_default_tickers_exist(self):
         self.assertGreaterEqual(len(get_default_tickers()), 2)
 
+    def test_default_tickers_include_binance_c2c_rate(self):
+        self.assertIn("binance_c2c::USDT-CNY", [ticker.key for ticker in get_default_tickers()])
+
     def test_default_config_contains_update_tuning_fields(self):
         config = AppConfig.default()
         self.assertGreaterEqual(config.ui_refresh_interval, 0.05)
         self.assertEqual(config.performance_mode, "balanced")
         self.assertEqual(config.format_mode, "short")
         self.assertEqual(config.icon_style, "official")
+        self.assertGreaterEqual(config.max_visible, len(config.tickers))
 
     def test_performance_preset_overrides_refresh_interval(self):
         config = _build_app_config({"ui": {"performance_mode": "stable", "ui_refresh_interval": 0.1}}, AppConfig.default())
@@ -90,6 +94,44 @@ class UIRenderTests(unittest.TestCase):
         self.assertEqual(config.exchange_short_names["binance"], "BN")
         self.assertIn("binance::sol-usdt", config.ticker_preferences)
 
+    def test_config_supports_binance_c2c_ticker(self):
+        config = _build_app_config(
+            {
+                "ui": {
+                    "tickers": [
+                        {"exchange": "binance_c2c", "symbol": "USDT-CNY", "display_name": "U/CNY", "enabled": True},
+                    ],
+                    "ticker_preferences": [
+                        {"key": "binance_c2c::USDT-CNY", "visible": True, "order": 0, "pinned_title": True},
+                    ],
+                }
+            },
+            AppConfig.default(),
+        )
+        self.assertEqual(config.tickers[0].key, "binance_c2c::USDT-CNY")
+        self.assertIn("binance_c2c::usdt-cny", config.ticker_preferences)
+        self.assertIn("binance_c2c", config.exchanges)
+
+    def test_config_supports_futures_tickers(self):
+        config = _build_app_config(
+            {
+                "ui": {
+                    "tickers": [
+                        {"exchange": "kucoin_futures", "symbol": "XBTUSDTM", "display_name": "XBT 永续", "enabled": True},
+                        {"exchange": "binance_futures", "symbol": "BTC-USDT", "display_name": "BTC 永续", "enabled": True},
+                    ],
+                    "ticker_preferences": [
+                        {"key": "kucoin_futures::XBTUSDTM", "visible": True, "order": 0, "pinned_title": True},
+                        {"key": "binance_futures::BTC-USDT", "visible": True, "order": 1, "pinned_title": False},
+                    ],
+                }
+            },
+            AppConfig.default(),
+        )
+        self.assertEqual([ticker.key for ticker in config.tickers], ["kucoin_futures::XBTUSDTM", "binance_futures::BTC-USDT"])
+        self.assertIn("kucoin_futures", config.exchanges)
+        self.assertIn("binance_futures", config.exchanges)
+
     def test_long_format_mode_uses_preset_templates(self):
         config = _build_app_config({"ui": {"format_mode": "long"}}, AppConfig.default())
         self.assertEqual(config.format_mode, "long")
@@ -130,6 +172,9 @@ class UIRenderTests(unittest.TestCase):
         self.assertIn("officialExchangeIconUrls", state)
         self.assertIn("kucoin", state["officialExchangeIconUrls"])
         self.assertIn("binance", state["officialExchangeIconUrls"])
+        self.assertIn("binance_c2c", state["officialExchangeIconUrls"])
+        self.assertIn("kucoin_futures", state["officialExchangeIconUrls"])
+        self.assertIn("binance_futures", state["officialExchangeIconUrls"])
 
     def test_panel_state_contains_template_reference_lists(self):
         config = AppConfig.default()
@@ -157,7 +202,18 @@ class UIRenderTests(unittest.TestCase):
 
     def test_sources_expose_symbol_list_api(self):
         self.assertTrue(hasattr(BinancePriceSource(lambda *_: None, lambda *_: None), "list_symbols"))
+        self.assertTrue(hasattr(BinanceC2CPriceSource(lambda *_: None, lambda *_: None), "list_symbols"))
+        self.assertTrue(hasattr(BinanceFuturesPriceSource(lambda *_: None, lambda *_: None), "list_symbols"))
         self.assertTrue(hasattr(KucoinPriceSource(lambda *_: None, lambda *_: None), "list_symbols"))
+        self.assertTrue(hasattr(KucoinFuturesPriceSource(lambda *_: None, lambda *_: None), "list_symbols"))
+
+    def test_binance_c2c_source_lists_supported_symbols(self):
+        symbols = BinanceC2CPriceSource(lambda *_: None, lambda *_: None).list_symbols()
+        self.assertIn("USDT-CNY", symbols)
+
+    def test_futures_sources_list_symbols_methods(self):
+        self.assertIsInstance(BinanceFuturesPriceSource(lambda *_: None, lambda *_: None).list_symbols(), list)
+        self.assertIsInstance(KucoinFuturesPriceSource(lambda *_: None, lambda *_: None).list_symbols(), list)
 
     def test_exchange_template_uses_short_label_by_default(self):
         self.app.config.exchange_short_names = {"kucoin": "KC", "binance": "BN"}
@@ -187,6 +243,16 @@ class UIRenderTests(unittest.TestCase):
         self.assertEqual(context["exchange_short"], "KC")
         self.assertEqual(context["exchange_full"], "KuCoin")
         self.assertEqual(context["exchange_icon"], "🟢 ")
+
+    def test_build_trade_url_supports_binance_c2c(self):
+        url = build_trade_url("binance_c2c", "USDT-CNY")
+        self.assertIn("p2p.binance.com", url)
+        self.assertIn("USDT", url)
+        self.assertIn("CNY", url)
+
+    def test_build_trade_url_supports_futures(self):
+        self.assertIn("binance.com/en/futures", build_trade_url("binance_futures", "BTC-USDT"))
+        self.assertIn("kucoin.com/futures/trade", build_trade_url("kucoin_futures", "XBTUSDTM"))
 
     def test_build_display_context_status_uses_trend_dots_when_online(self):
         rising = MarketSnapshot(exchange="kucoin", symbol="BTC-USDT", display_name="BTC", price=100.0, change=1.0, change_percent=1.0, is_first=False)

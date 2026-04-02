@@ -23,7 +23,7 @@ from .config import (
     TEMPLATE_VARIABLES,
     TickerConfig,
 )
-from .sources import BinancePriceSource, KucoinPriceSource
+from .sources import BinanceC2CPriceSource, BinanceFuturesPriceSource, BinancePriceSource, KucoinFuturesPriceSource, KucoinPriceSource
 
 
 PANEL_HTML_PATH = Path(__file__).with_name("panel.html")
@@ -50,6 +50,9 @@ class ConfigPanelServer:
         return {
             "kucoin": KucoinPriceSource,
             "binance": BinancePriceSource,
+            "binance_c2c": BinanceC2CPriceSource,
+            "kucoin_futures": KucoinFuturesPriceSource,
+            "binance_futures": BinanceFuturesPriceSource,
         }.get(exchange.lower())
 
     def _list_symbols(self, exchange: str) -> list[str]:

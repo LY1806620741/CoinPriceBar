@@ -30,12 +30,15 @@ DEFAULT_FORMAT_MODE = "short"
 OFFICIAL_EXCHANGE_ICON_URLS = {
     "kucoin": "https://www.kucoin.com/logo.png",
     "binance": "https://public.bnbstatic.com/static/images/common/favicon.ico",
+    "binance_c2c": "https://public.bnbstatic.com/static/images/common/favicon.ico",
+    "kucoin_futures": "https://www.kucoin.com/logo.png",
+    "binance_futures": "https://public.bnbstatic.com/static/images/common/favicon.ico",
 }
 EXCHANGE_ICON_PRESETS = {
-    "none": {"kucoin": "", "binance": ""},
-    "emoji": {"kucoin": "🟢 ", "binance": "🟡 "},
-    "text": {"kucoin": "[KC] ", "binance": "[BN] "},
-    "official": {"kucoin": "", "binance": ""},
+    "none": {"kucoin": "", "binance": "", "binance_c2c": "", "kucoin_futures": "", "binance_futures": ""},
+    "emoji": {"kucoin": "🟢 ", "binance": "🟡 ", "binance_c2c": "💱 ", "kucoin_futures": "📈 ", "binance_futures": "📊 "},
+    "text": {"kucoin": "[KC] ", "binance": "[BN] ", "binance_c2c": "[C2C] ", "kucoin_futures": "[KF] ", "binance_futures": "[BF] "},
+    "official": {"kucoin": "", "binance": "", "binance_c2c": "", "kucoin_futures": "", "binance_futures": ""},
 }
 ICON_STYLE_OPTIONS = {
     "none": "无图标",
@@ -186,6 +189,7 @@ DEFAULT_TICKERS = [
     ("kucoin", "BTC-USDT", "BTC"),
     ("kucoin", "ETH-USDT", "ETH"),
     ("binance", "ETH-USDT", "ETH"),
+    ("binance_c2c", "USDT-CNY", "U/CNY"),
 ]
 PERFORMANCE_PRESETS = {
     "stable": 0.5,
@@ -199,10 +203,16 @@ DEFAULT_LANGUAGE = "zh-CN"
 SUPPORTED_EXCHANGES = {
     "kucoin": "KuCoin",
     "binance": "Binance",
+    "binance_c2c": "Binance C2C",
+    "kucoin_futures": "KuCoin Futures",
+    "binance_futures": "Binance Futures",
 }
 DEFAULT_EXCHANGE_SHORT_NAMES = {
     "kucoin": "KC",
     "binance": "BN",
+    "binance_c2c": "C2C",
+    "kucoin_futures": "KF",
+    "binance_futures": "BF",
 }
 
 
@@ -266,7 +276,7 @@ class AppConfig:
                 pinned_title=index == 0,
             )
         return cls(
-            max_visible=4,
+            max_visible=max(4, len(ticker_items)),
             title_index=0,
             display_fields=list(DEFAULT_DISPLAY_FIELDS),
             format_mode=DEFAULT_FORMAT_MODE,
