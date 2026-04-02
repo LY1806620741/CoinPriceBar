@@ -646,7 +646,7 @@ class CoinPriceBarApp(rumps.App):
                 logging.warning(f"设置标题图标失败: 未加载到 {exchange} 图标")
                 return
             self.icon = str(cache_path)
-            logging.info(f"标题图标已设置: {exchange} -> {cache_path}")
+            logging.debug(f"标题图标已设置: {exchange} -> {cache_path}")
         except Exception as e:
             logging.warning(f"设置标题图标失败: {exchange} -> {e}")
 

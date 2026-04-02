@@ -11,8 +11,8 @@ DEFAULT_TITLE_TEMPLATE = "{exchange}:{symbol} {price}"
 DEFAULT_MENU_TEMPLATE = "{exchange}:{symbol} {price} ({change_percent})"
 FORMAT_PRESETS = {
     "short": {
-        "title_template": "{exchange_icon}{exchange}:{symbol} {price}",
-        "menu_template": "{exchange_icon}{exchange}:{symbol} {price} ({change_percent})",
+        "title_template": "{exchange_icon}{symbol} {price}",
+        "menu_template": "{exchange_icon}{symbol} {price} ({change_percent})",
         "label": "短格式",
     },
     "long": {
