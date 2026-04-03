@@ -123,7 +123,7 @@ def build_trade_url(exchange: str, symbol: str) -> str | None:
     if exchange.lower() == "binance":
         return f"https://www.binance.com/en/trade/{base}_{quote}?type=spot"
     if exchange.lower() == "binance_c2c":
-        return f"https://p2p.binance.com/en/trade/sell/{base}?fiat={quote}&payment=ALL"
+        return f"https://p2p.binance.com/zh-CN/trade/sell/{base}?fiat={quote}&payment=all-payments"
     if exchange.lower() == "binance_futures":
         return f"https://www.binance.com/en/futures/{base}{quote}"
     if exchange.lower() == "kucoin_futures":

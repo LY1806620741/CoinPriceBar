@@ -246,9 +246,7 @@ class UIRenderTests(unittest.TestCase):
 
     def test_build_trade_url_supports_binance_c2c(self):
         url = build_trade_url("binance_c2c", "USDT-CNY")
-        self.assertIn("p2p.binance.com", url)
-        self.assertIn("USDT", url)
-        self.assertIn("CNY", url)
+        self.assertEqual(url, "https://p2p.binance.com/zh-CN/trade/sell/USDT?fiat=CNY&payment=all-payments")
 
     def test_build_trade_url_supports_futures(self):
         self.assertIn("binance.com/en/futures", build_trade_url("binance_futures", "BTC-USDT"))
