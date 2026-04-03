@@ -14,7 +14,19 @@ KUCOIN_FUTURES_POLL_INTERVAL = 10.0
 
 class KucoinFuturesPriceSource(BasePriceSource):
     source_name = "kucoin_futures"
+    display_label = "KuCoin Futures"
+    home_url = "https://www.kucoin.com/futures"
     local_icon_name = "kucoin.png"
+    source_mode = "poll"
+    menu_icon_style = {"bg": (0.14, 0.74, 0.63, 1.0), "fg": (1.0, 1.0, 1.0, 1.0), "text": "F"}
+    require_image_content_type = True
+    retry_icon_download_on_load_failure = True
+
+    @classmethod
+    def build_trade_url(cls, symbol: str) -> str | None:
+        normalized = normalize_symbol(symbol)
+        compact = normalized.replace("-", "")
+        return f"https://www.kucoin.com/futures/trade/{compact}" if compact else None
 
     def __init__(self, update_callback, status_callback):
         super().__init__(update_callback, status_callback)
@@ -54,10 +66,7 @@ class KucoinFuturesPriceSource(BasePriceSource):
                         had_error = True
                         logging.warning(f"获取 KuCoin Futures 行情失败: {symbol} -> {e}")
                 self._emit_status("⚫" if had_error else "")
-                slept = 0.0
-                while self.running and slept < KUCOIN_FUTURES_POLL_INTERVAL:
-                    time.sleep(0.25)
-                    slept += 0.25
+                self._wait_interval(KUCOIN_FUTURES_POLL_INTERVAL)
         finally:
             self.running = False
 

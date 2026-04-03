@@ -27,7 +27,18 @@ def _split_c2c_symbol(symbol: str) -> tuple[str, str]:
 
 class BinanceC2CPriceSource(BasePriceSource):
     source_name = "binance_c2c"
+    display_label = "Binance C2C"
+    home_url = "https://p2p.binance.com/"
     local_icon_name = "binance.ico"
+    source_mode = "poll"
+    menu_icon_style = {"bg": (0.95, 0.71, 0.09, 1.0), "fg": (0.1, 0.1, 0.1, 1.0), "text": "C"}
+
+    @classmethod
+    def build_trade_url(cls, symbol: str) -> str | None:
+        asset, fiat = _split_c2c_symbol(symbol)
+        if not asset or not fiat:
+            return None
+        return f"https://p2p.binance.com/trade/sell/{asset}?fiat={fiat}&payment=all-payments"
 
     def __init__(self, update_callback, status_callback):
         super().__init__(update_callback, status_callback)
@@ -89,10 +100,7 @@ class BinanceC2CPriceSource(BasePriceSource):
                         had_error = True
                         logging.warning(f"获取 Binance C2C 汇率失败: {symbol} -> {e}")
                 self._emit_status("⚫" if had_error else "")
-                slept = 0.0
-                while self.running and slept < BINANCE_C2C_POLL_INTERVAL:
-                    time.sleep(0.25)
-                    slept += 0.25
+                self._wait_interval(BINANCE_C2C_POLL_INTERVAL)
         finally:
             self.running = False
 

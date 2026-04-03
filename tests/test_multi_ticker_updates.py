@@ -60,6 +60,9 @@ class MultiTickerUpdateTests(unittest.TestCase):
         self.app._quitting = False
         self.app.status_by_exchange = {}
         self.app.ui_queue = Queue()
+        self.app._menu_visible = True
+        self.app._title_dirty = False
+        self.app._dirty_menu_keys = set()
         self.app._menu_label = lambda exchange: "KuCoin" if exchange == "kucoin" else exchange.title()
         self.app._exchange_short_label = lambda exchange: CoinPriceBarApp._exchange_short_label(self.app, exchange)
         self.app._format_change = lambda snapshot: CoinPriceBarApp._format_change(self.app, snapshot)
@@ -139,6 +142,22 @@ class MultiTickerUpdateTests(unittest.TestCase):
         updated = self.app.price_menu_items[target_key].title
         self.assertIn("66.66", updated)
         self.assertNotIn("加载中", updated)
+
+    def test_process_ui_queue_defers_menu_item_refresh_when_menu_closed(self):
+        target_key = self.app.active_tickers[1].key
+        snapshot = self.app.snapshots[target_key]
+        snapshot.price = 88.88
+        snapshot.change = 1.11
+        snapshot.change_percent = 1.25
+        snapshot.is_first = False
+        self.app._menu_visible = False
+
+        CoinPriceBarApp._mark_snapshot_dirty(self.app, target_key)
+        CoinPriceBarApp._process_ui_queue(self.app)
+
+        self.assertIn("加载中", self.app.price_menu_items[target_key].title)
+        CoinPriceBarApp._on_menu_will_open(self.app)
+        self.assertIn("88.88", self.app.price_menu_items[target_key].title)
 
     def test_process_ui_queue_executes_deferred_refresh(self):
         target_key = self.app.active_tickers[1].key

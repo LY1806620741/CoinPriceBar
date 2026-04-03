@@ -25,7 +25,19 @@ def _binance_stream_name(symbol: str) -> str:
 
 class BinancePriceSource(BasePriceSource):
     source_name = "binance"
+    display_label = "Binance"
+    home_url = "https://www.binance.com/"
     local_icon_name = "binance.ico"
+    source_mode = "push"
+    menu_icon_style = {"bg": (0.95, 0.71, 0.09, 1.0), "fg": (0.1, 0.1, 0.1, 1.0), "text": "B"}
+
+    @classmethod
+    def build_trade_url(cls, symbol: str) -> str | None:
+        normalized = normalize_symbol(symbol)
+        base, _, quote = normalized.partition("-")
+        if not base or not quote:
+            return None
+        return f"https://www.binance.com/trade/{base}_{quote}?type=spot"
 
     def __init__(self, update_callback, status_callback):
         super().__init__(update_callback, status_callback)

@@ -15,17 +15,9 @@ import rumps
 from AppKit import NSApp, NSBitmapImageRep, NSColor, NSFont, NSImage, NSMakeRect, NSPNGFileType, NSStatusBar, NSVariableStatusItemLength, NSZeroRect
 from Foundation import NSObject
 
-from .config import AppConfig, DEFAULT_CONFIG_PATH, OFFICIAL_EXCHANGE_ICON_URLS, TickerConfig, UITickerPreference, get_default_tickers, load_app_config, normalize_symbol
+from .config import AppConfig, DEFAULT_CONFIG_PATH, TickerConfig, UITickerPreference, get_default_tickers, load_app_config, normalize_symbol
 from .panel import ConfigPanelServer
-from .sources import BasePriceSource, BinanceC2CPriceSource, BinanceFuturesPriceSource, BinancePriceSource, KucoinFuturesPriceSource, KucoinPriceSource, MarketSnapshot
-
-SOURCE_ICON_MAP = {
-    "kucoin": KucoinPriceSource,
-    "binance": BinancePriceSource,
-    "binance_c2c": BinanceC2CPriceSource,
-    "kucoin_futures": KucoinFuturesPriceSource,
-    "binance_futures": BinanceFuturesPriceSource,
-}
+from .sources import BasePriceSource, MarketSnapshot, get_source_class
 
 LOG_CONFIG = {
     "level": logging.INFO,
@@ -42,39 +34,7 @@ HARD_EXIT_DELAY_SEC = 2
 ENABLE_HARD_EXIT_FALLBACK = False
 PRICE_EPSILON = 0.0001
 
-EXCHANGE_URLS = {
-    "kucoin": {
-        "label": "KuCoin",
-        "home": "https://www.kucoin.com/",
-        "spot_trade": "https://www.kucoin.com/trade/{}-{}",
-    },
-    "binance": {
-        "label": "Binance",
-        "home": "https://www.binance.com/",
-    },
-    "binance_c2c": {
-        "label": "Binance C2C",
-        "home": "https://p2p.binance.com/",
-    },
-    "kucoin_futures": {
-        "label": "KuCoin Futures",
-        "home": "https://www.kucoin.com/futures",
-    },
-    "binance_futures": {
-        "label": "Binance Futures",
-        "home": "https://www.binance.com/en/futures/home",
-    },
-}
-
 logging.basicConfig(**LOG_CONFIG)
-
-EXCHANGE_MENU_ICON_STYLE = {
-    "kucoin": {"bg": (0.14, 0.74, 0.63, 1.0), "fg": (1.0, 1.0, 1.0, 1.0), "text": "K"},
-    "binance": {"bg": (0.95, 0.71, 0.09, 1.0), "fg": (0.1, 0.1, 0.1, 1.0), "text": "B"},
-    "binance_c2c": {"bg": (0.95, 0.71, 0.09, 1.0), "fg": (0.1, 0.1, 0.1, 1.0), "text": "C"},
-    "kucoin_futures": {"bg": (0.14, 0.74, 0.63, 1.0), "fg": (1.0, 1.0, 1.0, 1.0), "text": "F"},
-    "binance_futures": {"bg": (0.95, 0.71, 0.09, 1.0), "fg": (0.1, 0.1, 0.1, 1.0), "text": "F"},
-}
 MENU_ICON_SIZE = 18
 ICON_CACHE_DIR = Path(__file__).resolve().parent.parent / ".cache" / "exchange_icons"
 ICON_DOWNLOAD_TIMEOUT = 5
@@ -109,31 +69,21 @@ def _with_trend_suffix(text: str, change: float) -> str:
     return text
 
 
-def _split_symbol(symbol: str) -> tuple[str, str]:
-    parts = normalize_symbol(symbol).split("-", 1)
-    if len(parts) == 2:
-        return parts[0], parts[1]
-    return symbol.upper(), ""
-
-
-def build_trade_url(exchange: str, symbol: str) -> str | None:
-    base, quote = _split_symbol(symbol)
-    if exchange.lower() == "kucoin":
-        return EXCHANGE_URLS["kucoin"]["spot_trade"].format(base, quote)
-    if exchange.lower() == "binance":
-        return f"https://www.binance.com/en/trade/{base}_{quote}?type=spot"
-    if exchange.lower() == "binance_c2c":
-        return f"https://p2p.binance.com/zh-CN/trade/sell/{base}?fiat={quote}&payment=all-payments"
-    if exchange.lower() == "binance_futures":
-        return f"https://www.binance.com/en/futures/{base}{quote}"
-    if exchange.lower() == "kucoin_futures":
-        return f"https://www.kucoin.com/futures/trade/{normalize_symbol(symbol).replace('-', '')}"
-    return None
-
-
 class Terminator(NSObject):
     def terminate_(self, _):
         NSApp.terminate_(None)
+
+
+class MenuLifecycleDelegate(NSObject):
+    def menuWillOpen_(self, _menu):
+        callback = getattr(self, "_on_open", None)
+        if callable(callback):
+            callback()
+
+    def menuDidClose_(self, _menu):
+        callback = getattr(self, "_on_close", None)
+        if callable(callback):
+            callback()
 
 
 terminator = Terminator.alloc().init()
@@ -149,15 +99,8 @@ class MultiSourcePriceMonitor:
         self._build_sources()
 
     def _build_sources(self):
-        exchange_map = {
-            "kucoin": KucoinPriceSource,
-            "binance": BinancePriceSource,
-            "binance_c2c": BinanceC2CPriceSource,
-            "kucoin_futures": KucoinFuturesPriceSource,
-            "binance_futures": BinanceFuturesPriceSource,
-        }
         for exchange in {ticker.exchange.lower() for ticker in self.active_tickers if ticker.enabled}:
-            source_cls = exchange_map.get(exchange)
+            source_cls = get_source_class(exchange)
             if source_cls:
                 self.sources[exchange] = source_cls(self.update_callback, self.status_callback)
             else:
@@ -211,6 +154,11 @@ class CoinPriceBarApp(rumps.App):
         self.panel_server = ConfigPanelServer(self._get_current_config, self._get_all_tickers, self._save_ui_config_payload)
         self._quitting = False
         self._status_item = None
+        self._menu_visible = False
+        self._title_dirty = False
+        self._dirty_menu_keys: set[str] = set()
+        self._dirty_lock = threading.Lock()
+        self._menu_delegate = None
         self._init_snapshots()
         self._init_menu()
         self._bind_status_item_button()
@@ -363,7 +311,8 @@ class CoinPriceBarApp(rumps.App):
 
     @staticmethod
     def _build_menu_icon(exchange: str) -> NSImage | None:
-        style = EXCHANGE_MENU_ICON_STYLE.get(exchange.lower())
+        source_cls = get_source_class(exchange)
+        style = source_cls.get_menu_icon_style() if source_cls else None
         if not style:
             return None
         image = NSImage.alloc().initWithSize_((MENU_ICON_SIZE, MENU_ICON_SIZE))
@@ -413,11 +362,11 @@ class CoinPriceBarApp(rumps.App):
     @staticmethod
     def _icon_cache_path(exchange: str) -> Path:
         ICON_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        source_cls = SOURCE_ICON_MAP.get(exchange.lower())
+        source_cls = get_source_class(exchange)
         local_path = source_cls.get_local_icon_path() if source_cls else None
         if local_path is not None:
             return ICON_CACHE_DIR / f"{exchange.lower()}{local_path.suffix}"
-        url = OFFICIAL_EXCHANGE_ICON_URLS.get(exchange.lower(), "")
+        url = source_cls.get_icon_url() if source_cls else ""
         suffix = Path(urlparse(url).path).suffix or ".img"
         return ICON_CACHE_DIR / f"{exchange.lower()}{suffix}"
 
@@ -445,11 +394,11 @@ class CoinPriceBarApp(rumps.App):
 
     @staticmethod
     def _download_exchange_icon(exchange: str) -> Path | None:
-        url = OFFICIAL_EXCHANGE_ICON_URLS.get(exchange.lower(), "")
+        source_cls = get_source_class(exchange)
+        url = source_cls.get_icon_url() if source_cls else ""
         cache_path = CoinPriceBarApp._icon_cache_path(exchange)
         if CoinPriceBarApp._is_valid_cache_file(cache_path):
             return cache_path
-        source_cls = SOURCE_ICON_MAP.get(exchange.lower())
         local_path = source_cls.get_local_icon_path() if source_cls else None
         try:
             if cache_path.exists() and not CoinPriceBarApp._is_valid_cache_file(cache_path):
@@ -458,16 +407,12 @@ class CoinPriceBarApp(rumps.App):
             if url:
                 request = Request(
                     url,
-                    headers={
-                        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36",
-                        "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-                        "Referer": "https://www.kucoin.com/" if exchange.lower() == "kucoin" else "https://www.binance.com/",
-                    },
+                    headers=source_cls.get_icon_request_headers() if source_cls else {},
                 )
                 with urlopen(request, timeout=ICON_DOWNLOAD_TIMEOUT) as response:
                     data = response.read()
                     content_type = str(response.headers.get("Content-Type", ""))
-                if data and ("image" in content_type.lower() or exchange.lower() != "kucoin"):
+                if data and (source_cls.accepts_icon_content_type(content_type) if source_cls else True):
                     cache_path.write_bytes(data)
                     if CoinPriceBarApp._is_valid_cache_file(cache_path):
                         return cache_path
@@ -475,7 +420,7 @@ class CoinPriceBarApp(rumps.App):
                 cache_path.write_bytes(local_path.read_bytes())
                 return cache_path if CoinPriceBarApp._is_valid_cache_file(cache_path) else None
             return None
-        except (OSError, URLError, TimeoutError) as e:
+        except (OSError, URLError) as e:
             logging.warning(f"下载官方 logo 失败: {exchange} -> {e}")
             if local_path is not None and local_path.exists():
                 try:
@@ -508,7 +453,8 @@ class CoinPriceBarApp(rumps.App):
             if native_item is None:
                 return
             icon = CoinPriceBarApp._load_cached_exchange_icon(exchange)
-            if icon is None and exchange.lower() == "kucoin":
+            source_cls = get_source_class(exchange)
+            if icon is None and source_cls and source_cls.should_retry_icon_download_on_load_failure():
                 cache_path = CoinPriceBarApp._icon_cache_path(exchange)
                 if cache_path.exists():
                     try:
@@ -556,6 +502,7 @@ class CoinPriceBarApp(rumps.App):
             snapshot = self.snapshots.get(ticker.key)
             if snapshot:
                 self._refresh_snapshot_ui(ticker.key)
+        self._bind_menu_delegate()
 
     def _show_debug_snapshot(self, _):
         lines = []
@@ -568,7 +515,8 @@ class CoinPriceBarApp(rumps.App):
         rumps.alert("调试快照", message)
 
     def _menu_label(self, exchange: str) -> str:
-        return EXCHANGE_URLS.get(exchange.lower(), {}).get("label", exchange.title())
+        source_cls = get_source_class(exchange)
+        return source_cls.get_display_label() if source_cls else exchange.title()
 
     def _exchange_short_label(self, exchange: str) -> str:
         exchange_key = exchange.lower()
@@ -664,6 +612,79 @@ class CoinPriceBarApp(rumps.App):
             logging.warning(f"绑定状态栏按钮失败: {e}")
             self._status_item = None
 
+    def _bind_menu_delegate(self):
+        try:
+            native_menu = getattr(self.menu, "_menu", None)
+            if native_menu is None:
+                return
+            delegate = MenuLifecycleDelegate.alloc().init()
+            delegate._on_open = self._on_menu_will_open
+            delegate._on_close = self._on_menu_did_close
+            native_menu.setDelegate_(delegate)
+            self._menu_delegate = delegate
+        except Exception as e:
+            logging.debug(f"绑定菜单生命周期代理失败: {e}")
+
+    def _ensure_ui_dirty_state(self):
+        if not hasattr(self, "_dirty_lock") or self._dirty_lock is None:
+            self._dirty_lock = threading.Lock()
+        if not hasattr(self, "_dirty_menu_keys") or self._dirty_menu_keys is None:
+            self._dirty_menu_keys = set()
+        if not hasattr(self, "_title_dirty"):
+            self._title_dirty = False
+        if not hasattr(self, "_menu_visible"):
+            self._menu_visible = True
+
+    def _on_menu_will_open(self):
+        CoinPriceBarApp._ensure_ui_dirty_state(self)
+        self._menu_visible = True
+        CoinPriceBarApp._process_ui_queue(self)
+        CoinPriceBarApp._refresh_visible_menu_items(self)
+
+    def _on_menu_did_close(self):
+        CoinPriceBarApp._ensure_ui_dirty_state(self)
+        self._menu_visible = False
+
+    def _mark_snapshot_dirty(self, key: str):
+        CoinPriceBarApp._ensure_ui_dirty_state(self)
+        with self._dirty_lock:
+            self._dirty_menu_keys.add(key)
+            if self.active_tickers and key == self.active_tickers[self.title_ticker_index].key:
+                self._title_dirty = True
+
+    def _drain_dirty_state(self) -> tuple[bool, list[str]]:
+        CoinPriceBarApp._ensure_ui_dirty_state(self)
+        with self._dirty_lock:
+            title_dirty = self._title_dirty
+            if title_dirty:
+                self._title_dirty = False
+            if self._menu_visible:
+                menu_keys = [key for key in self._dirty_menu_keys if key in self.price_menu_items]
+                for key in menu_keys:
+                    self._dirty_menu_keys.discard(key)
+            else:
+                menu_keys = []
+        return title_dirty, menu_keys
+
+    def _refresh_title_for_key(self, key: str):
+        snapshot = self.snapshots.get(key)
+        if not snapshot:
+            return
+        self.title = self._render_text(snapshot, self.config.title_template, is_title=True)
+        self._set_title_icon(snapshot.exchange)
+
+    def _refresh_menu_item_for_key(self, key: str):
+        snapshot = self.snapshots.get(key)
+        if not snapshot:
+            return
+        item = self.price_menu_items.get(key)
+        if item is not None:
+            item.title = self._render_text(snapshot, self.config.menu_template)
+
+    def _refresh_visible_menu_items(self):
+        for ticker in self.active_tickers:
+            CoinPriceBarApp._refresh_menu_item_for_key(self, ticker.key)
+
     def _set_title_icon(self, exchange: str):
         try:
             cache_path = CoinPriceBarApp._download_exchange_icon(exchange)
@@ -727,7 +748,7 @@ class CoinPriceBarApp(rumps.App):
         snapshot.is_first = False
         snapshot.has_error = False
         snapshot.status = self.status_by_exchange.get(exchange.lower(), snapshot.status)
-        self.ui_queue.put(lambda ticker_key=key: self._refresh_snapshot_ui(ticker_key))
+        self.ui_queue.put(lambda ticker_key=key: CoinPriceBarApp._mark_snapshot_dirty(self, ticker_key))
 
     def _on_status_update(self, exchange: str, status: str):
         if self._quitting:
@@ -736,13 +757,13 @@ class CoinPriceBarApp(rumps.App):
         if self.status_by_exchange.get(exchange) == status:
             return
         self.status_by_exchange[exchange] = status
-        self.ui_queue.put(lambda ex=exchange, st=status: self._apply_exchange_status(ex, st))
+        self.ui_queue.put(lambda ex=exchange, st=status: CoinPriceBarApp._apply_exchange_status(self, ex, st))
 
     def _apply_exchange_status(self, exchange: str, status: str):
         for snapshot in self.snapshots.values():
             if snapshot.exchange.lower() == exchange:
                 snapshot.status = status
-                self._refresh_snapshot_ui(snapshot.key)
+                CoinPriceBarApp._mark_snapshot_dirty(self, snapshot.key)
 
     def _refresh_snapshot_ui(self, key: str):
         snapshot = self.snapshots.get(key)
@@ -751,14 +772,9 @@ class CoinPriceBarApp(rumps.App):
             return
 
         if self.active_tickers and key == self.active_tickers[self.title_ticker_index].key:
-            self.title = self._render_text(snapshot, self.config.title_template, is_title=True)
-            self._set_title_icon(snapshot.exchange)
+            CoinPriceBarApp._refresh_title_for_key(self, key)
 
-        item = self.price_menu_items.get(key)
-        if item is not None:
-            item.title = self._render_text(snapshot, self.config.menu_template)
-        else:
-            logging.debug(f"价格已更新但当前不可见: {key}")
+        CoinPriceBarApp._refresh_menu_item_for_key(self, key)
 
     def _process_ui_queue(self, _=None):
         try:
@@ -766,17 +782,24 @@ class CoinPriceBarApp(rumps.App):
                 task = self.ui_queue.get_nowait()
                 if not self._quitting and callable(task):
                     task()
+            title_dirty, menu_keys = CoinPriceBarApp._drain_dirty_state(self)
+            if title_dirty and self.active_tickers:
+                CoinPriceBarApp._refresh_title_for_key(self, self.active_tickers[self.title_ticker_index].key)
+            for key in menu_keys:
+                CoinPriceBarApp._refresh_menu_item_for_key(self, key)
         except Exception as e:
             logging.error(f"处理UI任务失败: {e}\n{traceback.format_exc()}")
 
     def _open_exchange_home(self, exchange: str):
-        url = EXCHANGE_URLS.get(exchange.lower(), {}).get("home")
+        source_cls = get_source_class(exchange)
+        url = source_cls.get_home_url() if source_cls else ""
         if url:
             self._open_url(url, f"{self._menu_label(exchange)} 官网")
 
     def _open_trade_page(self, exchange: str, symbol: str):
         try:
-            trade_url = build_trade_url(exchange, symbol)
+            source_cls = get_source_class(exchange)
+            trade_url = source_cls.build_trade_url(symbol) if source_cls else None
             if not trade_url:
                 raise ValueError(f"不支持的数据源: {exchange}")
             self._open_url(trade_url, f"{self._menu_label(exchange)} {symbol} 交易页面")

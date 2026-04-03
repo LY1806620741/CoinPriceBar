@@ -17,7 +17,19 @@ def _to_binance_futures_api_symbol(symbol: str) -> str:
 
 class BinanceFuturesPriceSource(BasePriceSource):
     source_name = "binance_futures"
+    display_label = "Binance Futures"
+    home_url = "https://www.binance.com/en/futures/home"
     local_icon_name = "binance.ico"
+    source_mode = "poll"
+    menu_icon_style = {"bg": (0.95, 0.71, 0.09, 1.0), "fg": (0.1, 0.1, 0.1, 1.0), "text": "F"}
+
+    @classmethod
+    def build_trade_url(cls, symbol: str) -> str | None:
+        normalized = normalize_symbol(symbol)
+        base, _, quote = normalized.partition("-")
+        if not base or not quote:
+            return None
+        return f"https://www.binance.com/futures/{base}{quote}"
 
     def __init__(self, update_callback, status_callback):
         super().__init__(update_callback, status_callback)
@@ -61,10 +73,7 @@ class BinanceFuturesPriceSource(BasePriceSource):
                 except Exception as e:
                     logging.warning(f"获取 Binance Futures 行情失败: {e}")
                     self._emit_status("⚫")
-                slept = 0.0
-                while self.running and slept < BINANCE_FUTURES_POLL_INTERVAL:
-                    time.sleep(0.25)
-                    slept += 0.25
+                self._wait_interval(BINANCE_FUTURES_POLL_INTERVAL)
         finally:
             self.running = False
 

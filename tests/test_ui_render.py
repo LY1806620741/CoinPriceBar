@@ -1,10 +1,10 @@
 import unittest
 from pathlib import Path
 
-from coinpricebar.app import CoinPriceBarApp, _with_trend_suffix, build_trade_url
+from coinpricebar.app import CoinPriceBarApp, _with_trend_suffix
 from coinpricebar.config import AppConfig, TEMPLATE_VARIABLE_GROUPS, _build_app_config, get_default_tickers
 from coinpricebar.panel import ConfigPanelServer
-from coinpricebar.sources import BinanceC2CPriceSource, BinanceFuturesPriceSource, BinancePriceSource, KucoinFuturesPriceSource, KucoinPriceSource
+from coinpricebar.sources import BinanceC2CPriceSource, BinanceFuturesPriceSource, BinancePriceSource, KucoinFuturesPriceSource, KucoinPriceSource, get_source_class
 from coinpricebar.sources.base import MarketSnapshot
 
 
@@ -245,12 +245,23 @@ class UIRenderTests(unittest.TestCase):
         self.assertEqual(context["exchange_icon"], "🟢 ")
 
     def test_build_trade_url_supports_binance_c2c(self):
-        url = build_trade_url("binance_c2c", "USDT-CNY")
+        url = BinanceC2CPriceSource.build_trade_url("USDT-CNY")
         self.assertEqual(url, "https://p2p.binance.com/zh-CN/trade/sell/USDT?fiat=CNY&payment=all-payments")
 
+    def test_build_trade_url_supports_kucoin_spot(self):
+        self.assertEqual(KucoinPriceSource.build_trade_url("btc_usdt"), "https://www.kucoin.com/trade/BTC-USDT")
+
     def test_build_trade_url_supports_futures(self):
-        self.assertIn("binance.com/en/futures", build_trade_url("binance_futures", "BTC-USDT"))
-        self.assertIn("kucoin.com/futures/trade", build_trade_url("kucoin_futures", "XBTUSDTM"))
+        self.assertIn("binance.com/en/futures", BinanceFuturesPriceSource.build_trade_url("BTC-USDT"))
+        self.assertIn("kucoin.com/futures/trade", KucoinFuturesPriceSource.build_trade_url("XBTUSDTM"))
+
+    def test_source_registry_exposes_standardized_plugin_metadata(self):
+        self.assertEqual(get_source_class("kucoin").get_display_label(), "KuCoin")
+        self.assertEqual(get_source_class("binance_c2c").get_home_url(), "https://p2p.binance.com/")
+        self.assertIsNotNone(get_source_class("binance_futures").get_menu_icon_style())
+
+    def test_menu_label_uses_plugin_metadata(self):
+        self.assertEqual(CoinPriceBarApp._menu_label(self.app, "binance_c2c"), "Binance C2C")
 
     def test_build_display_context_status_uses_trend_dots_when_online(self):
         rising = MarketSnapshot(exchange="kucoin", symbol="BTC-USDT", display_name="BTC", price=100.0, change=1.0, change_percent=1.0, is_first=False)

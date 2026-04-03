@@ -17,6 +17,7 @@ from kucoin_universal_sdk.model import (
     WebSocketEvent,
 )
 
+from ..config import normalize_symbol
 from .base import BasePriceSource
 
 KUCOIN_SYMBOLS_URL = "https://api.kucoin.com/api/v2/symbols"
@@ -32,7 +33,21 @@ def _dump_threads(tag: str):
 
 class KucoinPriceSource(BasePriceSource):
     source_name = "kucoin"
+    display_label = "KuCoin"
+    home_url = "https://www.kucoin.com/"
     local_icon_name = "kucoin.png"
+    source_mode = "push"
+    menu_icon_style = {"bg": (0.14, 0.74, 0.63, 1.0), "fg": (1.0, 1.0, 1.0, 1.0), "text": "K"}
+    require_image_content_type = True
+    retry_icon_download_on_load_failure = True
+
+    @classmethod
+    def build_trade_url(cls, symbol: str) -> str | None:
+        normalized = normalize_symbol(symbol)
+        base, _, quote = normalized.partition("-")
+        if not base or not quote:
+            return None
+        return f"https://www.kucoin.com/trade/{base}-{quote}"
 
     def __init__(self, update_callback, status_callback):
         super().__init__(update_callback, status_callback)

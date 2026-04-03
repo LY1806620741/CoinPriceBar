@@ -23,7 +23,7 @@ from .config import (
     TEMPLATE_VARIABLES,
     TickerConfig,
 )
-from .sources import BinanceC2CPriceSource, BinanceFuturesPriceSource, BinancePriceSource, KucoinFuturesPriceSource, KucoinPriceSource
+from .sources import get_source_class
 
 
 PANEL_HTML_PATH = Path(__file__).with_name("panel.html")
@@ -47,13 +47,7 @@ class ConfigPanelServer:
         self.symbol_cache_ttl = 300.0
 
     def _get_symbol_provider(self, exchange: str):
-        return {
-            "kucoin": KucoinPriceSource,
-            "binance": BinancePriceSource,
-            "binance_c2c": BinanceC2CPriceSource,
-            "kucoin_futures": KucoinFuturesPriceSource,
-            "binance_futures": BinanceFuturesPriceSource,
-        }.get(exchange.lower())
+        return get_source_class(exchange)
 
     def _list_symbols(self, exchange: str) -> list[str]:
         exchange = exchange.lower()
