@@ -10,10 +10,11 @@ function buildState() {
     config: {
       ui: {
         language: 'zh-CN',
-        max_visible: 4,
         title_index: 0,
         format_mode: 'custom',
         title_template: '{exchange}:{symbol} {price}',
+        title_template_multi: '{symbol} {price}',
+        title_separator: ' · ',
         menu_template: '{exchange_full} {symbol} {price}',
         icon_style: 'official',
         display_fields: ['exchange', 'symbol', 'price'],
@@ -42,9 +43,9 @@ function buildState() {
     configPath: '/tmp/config.json',
     performancePresets: { stable: 0.5, balanced: 0.25, realtime: 0.1, custom: 0.25 },
     formatPresets: {
-      short: { label: 'Short', title_template: '{exchange}:{symbol} {price}', menu_template: '{exchange}:{symbol} {price}' },
-      long: { label: 'Long', title_template: '{exchange_full}:{symbol} {price}', menu_template: '{exchange_full}:{symbol} {price} {status}' },
-      custom: { label: 'Custom', title_template: '{exchange}:{symbol} {price}', menu_template: '{exchange_full}:{symbol} {price}' },
+      short: { label: 'Short', title_template: '{exchange}:{symbol} {price}', title_template_multi: '{symbol} {price}', menu_template: '{exchange}:{symbol} {price}' },
+      long: { label: 'Long', title_template: '{exchange_full}:{symbol} {price}', title_template_multi: '{exchange} {symbol} {price}', menu_template: '{exchange_full}:{symbol} {price} {status}' },
+      custom: { label: 'Custom', title_template: '{exchange}:{symbol} {price}', title_template_multi: '{symbol} {price}', menu_template: '{exchange_full}:{symbol} {price}' },
     },
     templateExamples: [],
     templateVariableGroups: [],
@@ -167,6 +168,26 @@ test('panel saveState posts reordered ticker payload', async () => {
   const savedPayload = getSavedPayload();
   assert.ok(savedPayload, 'expected save payload to be captured');
   assert.deepEqual(Array.from(savedPayload.ui.tickers, item => `${item.exchange}::${item.symbol}`), ['binance::ETH-USDT', 'kucoin::BTC-USDT', 'kucoin::KCS-USDT']);
+});
+
+test('panel title preview and payload support multiple pinned title rows', async () => {
+  const { dom } = await bootPanel();
+  const secondPinned = dom.window.document.querySelectorAll('input[data-field="pinned_title"]')[1];
+  assert.ok(secondPinned, 'expected second pinned-title checkbox to exist');
+
+  secondPinned.checked = true;
+  secondPinned.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+
+  const titlePreview = dom.window.document.getElementById('title_preview')?.textContent || '';
+  assert.match(titlePreview, /BTC/);
+  assert.match(titlePreview, /ETH/);
+  assert.match(titlePreview, /·/);
+  assert.doesNotMatch(titlePreview, /KC:/);
+
+  const payload = dom.window.collectPayload();
+  assert.equal(payload.ui.title_template_multi, '{symbol} {price}');
+  assert.equal(payload.ui.title_separator, ' · ');
+  assert.equal(payload.ui.ticker_preferences.filter(item => item.pinned_title).length, 2);
 });
 
 test('panel sortable initialization is handle-only and table-row based', async () => {

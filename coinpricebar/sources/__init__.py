@@ -4,6 +4,7 @@ from .binance_c2c import BinanceC2CPriceSource
 from .binance_futures import BinanceFuturesPriceSource
 from .kucoin import KucoinPriceSource
 from .kucoin_futures import KucoinFuturesPriceSource
+from .web3 import Web3PriceSource
 
 SOURCE_REGISTRY = {
     KucoinPriceSource.source_name: KucoinPriceSource,
@@ -11,6 +12,7 @@ SOURCE_REGISTRY = {
     BinanceC2CPriceSource.source_name: BinanceC2CPriceSource,
     KucoinFuturesPriceSource.source_name: KucoinFuturesPriceSource,
     BinanceFuturesPriceSource.source_name: BinanceFuturesPriceSource,
+    Web3PriceSource.source_name: Web3PriceSource,
 }
 
 
@@ -27,5 +29,6 @@ __all__ = [
     "BinanceFuturesPriceSource",
     "KucoinPriceSource",
     "KucoinFuturesPriceSource",
+    "Web3PriceSource",
 ]
 

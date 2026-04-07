@@ -41,6 +41,7 @@ class MultiTickerUpdateTests(unittest.TestCase):
         self.app = DummyApp()
         self.app.config = AppConfig.default()
         self.app.config.title_template = "{exchange}:{symbol} {price} {change_percent}"
+        self.app.config.title_separator = " · "
         self.app.config.menu_template = "{exchange}:{symbol} {price} {change_percent}"
         self.app.config.exchange_short_names = {"kucoin": "KC", "binance": "BN"}
         self.app.active_tickers = [
@@ -85,12 +86,52 @@ class MultiTickerUpdateTests(unittest.TestCase):
         self.assertIn("↓", second_title)
         self.assertNotIn("加载中", second_title)
 
+    def test_resolve_title_tickers_supports_multiple_pinned_items(self):
+        self.app.config.ticker_preferences = {
+            "kucoin::btc-usdt": UITickerPreference(key="kucoin::btc-usdt", visible=True, order=0, pinned_title=True),
+            "binance::eth-usdt": UITickerPreference(key="binance::eth-usdt", visible=True, order=1, pinned_title=True),
+        }
+        self.app._get_ticker_preference = lambda ticker: CoinPriceBarApp._get_ticker_preference(self.app, ticker)
+
+        title_tickers = CoinPriceBarApp._resolve_title_tickers(self.app)
+
+        self.assertEqual([ticker.key for ticker in title_tickers], ["kucoin::BTC-USDT", "binance::ETH-USDT"])
+
+    def test_refresh_title_joins_multiple_pinned_items_and_clears_mixed_icon(self):
+        self.app.config.ticker_preferences = {
+            "kucoin::btc-usdt": UITickerPreference(key="kucoin::btc-usdt", visible=True, order=0, pinned_title=True),
+            "binance::eth-usdt": UITickerPreference(key="binance::eth-usdt", visible=True, order=1, pinned_title=True),
+        }
+        self.app._get_ticker_preference = lambda ticker: CoinPriceBarApp._get_ticker_preference(self.app, ticker)
+        self.app.icon = "preset-icon"
+        self.app.config.title_template_multi = "{symbol} {price}"
+
+        CoinPriceBarApp._refresh_title(self.app)
+
+        self.assertIn("BTC", self.app.title)
+        self.assertIn("ETH", self.app.title)
+        self.assertIn(" · ", self.app.title)
+        self.assertIsNone(self.app.icon)
+
+    def test_refresh_title_uses_single_template_when_only_one_item_is_pinned(self):
+        self.app.config.ticker_preferences = {
+            "kucoin::btc-usdt": UITickerPreference(key="kucoin::btc-usdt", visible=True, order=0, pinned_title=True),
+            "binance::eth-usdt": UITickerPreference(key="binance::eth-usdt", visible=True, order=1, pinned_title=False),
+        }
+        self.app.config.title_template = "SINGLE {exchange}:{symbol}"
+        self.app.config.title_template_multi = "MULTI {symbol}"
+        self.app._get_ticker_preference = lambda ticker: CoinPriceBarApp._get_ticker_preference(self.app, ticker)
+
+        CoinPriceBarApp._refresh_title(self.app)
+
+        self.assertIn("SINGLE", self.app.title)
+        self.assertNotIn("MULTI", self.app.title)
+
     def test_visible_tickers_follow_config_ticker_sequence_instead_of_pref_order(self):
         self.app.all_tickers = [
             TickerConfig(exchange="binance", symbol="ETH-USDT", display_name="ETH"),
             TickerConfig(exchange="kucoin", symbol="BTC-USDT", display_name="BTC"),
         ]
-        self.app.config.max_visible = 2
         self.app.config.ticker_preferences = {
             "kucoin::btc-usdt": UITickerPreference(key="kucoin::btc-usdt", visible=True, order=0, pinned_title=False),
             "binance::eth-usdt": UITickerPreference(key="binance::eth-usdt", visible=True, order=1, pinned_title=True),

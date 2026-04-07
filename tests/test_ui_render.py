@@ -1,10 +1,11 @@
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from coinpricebar.app import CoinPriceBarApp, _with_trend_suffix
 from coinpricebar.config import AppConfig, TEMPLATE_VARIABLE_GROUPS, _build_app_config, get_default_tickers
 from coinpricebar.panel import ConfigPanelServer
-from coinpricebar.sources import BinanceC2CPriceSource, BinanceFuturesPriceSource, BinancePriceSource, KucoinFuturesPriceSource, KucoinPriceSource, get_source_class
+from coinpricebar.sources import BinanceC2CPriceSource, BinanceFuturesPriceSource, BinancePriceSource, KucoinFuturesPriceSource, KucoinPriceSource, Web3PriceSource, get_source_class
 from coinpricebar.sources.base import MarketSnapshot
 
 
@@ -42,13 +43,18 @@ class UIRenderTests(unittest.TestCase):
     def test_default_tickers_include_binance_c2c_rate(self):
         self.assertIn("binance_c2c::USDT-CNY", [ticker.key for ticker in get_default_tickers()])
 
+    def test_default_tickers_include_web3_kcs_ethereum_pair(self):
+        self.assertIn(
+            "web3::PAIR:ETHEREUM:0XB26A868FFA4CBBA926970D7AE9C6A36D088EE38C",
+            [ticker.key for ticker in get_default_tickers()],
+        )
+
     def test_default_config_contains_update_tuning_fields(self):
         config = AppConfig.default()
         self.assertGreaterEqual(config.ui_refresh_interval, 0.05)
         self.assertEqual(config.performance_mode, "balanced")
         self.assertEqual(config.format_mode, "short")
         self.assertEqual(config.icon_style, "official")
-        self.assertGreaterEqual(config.max_visible, len(config.tickers))
 
     def test_performance_preset_overrides_refresh_interval(self):
         config = _build_app_config({"ui": {"performance_mode": "stable", "ui_refresh_interval": 0.1}}, AppConfig.default())
@@ -136,7 +142,17 @@ class UIRenderTests(unittest.TestCase):
         config = _build_app_config({"ui": {"format_mode": "long"}}, AppConfig.default())
         self.assertEqual(config.format_mode, "long")
         self.assertIn("{exchange_full}", config.title_template)
+        self.assertIn("{exchange}", config.title_template_multi)
+        self.assertIn("{symbol}", config.title_template_multi)
         self.assertIn("状态 {status}", config.menu_template)
+
+    def test_custom_format_mode_supports_multi_title_template(self):
+        config = _build_app_config(
+            {"ui": {"format_mode": "custom", "title_template": "{exchange}:{symbol}", "title_template_multi": "{symbol} {price}"}},
+            AppConfig.default(),
+        )
+        self.assertEqual(config.title_template, "{exchange}:{symbol}")
+        self.assertEqual(config.title_template_multi, "{symbol} {price}")
 
     def test_build_app_config_normalizes_preference_order_to_ticker_sequence(self):
         config = _build_app_config(
@@ -175,6 +191,7 @@ class UIRenderTests(unittest.TestCase):
         self.assertIn("binance_c2c", state["officialExchangeIconUrls"])
         self.assertIn("kucoin_futures", state["officialExchangeIconUrls"])
         self.assertIn("binance_futures", state["officialExchangeIconUrls"])
+        self.assertIn("web3", state["officialExchangeIconUrls"])
 
     def test_panel_state_contains_template_reference_lists(self):
         config = AppConfig.default()
@@ -206,6 +223,7 @@ class UIRenderTests(unittest.TestCase):
         self.assertTrue(hasattr(BinanceFuturesPriceSource(lambda *_: None, lambda *_: None), "list_symbols"))
         self.assertTrue(hasattr(KucoinPriceSource(lambda *_: None, lambda *_: None), "list_symbols"))
         self.assertTrue(hasattr(KucoinFuturesPriceSource(lambda *_: None, lambda *_: None), "list_symbols"))
+        self.assertTrue(hasattr(Web3PriceSource(lambda *_: None, lambda *_: None), "list_symbols"))
 
     def test_binance_c2c_source_lists_supported_symbols(self):
         symbols = BinanceC2CPriceSource(lambda *_: None, lambda *_: None).list_symbols()
@@ -214,6 +232,13 @@ class UIRenderTests(unittest.TestCase):
     def test_futures_sources_list_symbols_methods(self):
         self.assertIsInstance(BinanceFuturesPriceSource(lambda *_: None, lambda *_: None).list_symbols(), list)
         self.assertIsInstance(KucoinFuturesPriceSource(lambda *_: None, lambda *_: None).list_symbols(), list)
+
+    def test_web3_source_lists_supported_symbols(self):
+        symbols = Web3PriceSource(lambda *_: None, lambda *_: None).list_symbols()
+        self.assertIn("ETH-USD", symbols)
+        self.assertIn("BTC-USD", symbols)
+        self.assertIn("PAIR:ETHEREUM:0XB26A868FFA4CBBA926970D7AE9C6A36D088EE38C", symbols)
+        self.assertIn("PAIR:ETHEREUM:0X88E6A0C2DDD26FEEB64F039A2C41296FCB3F5640", symbols)
 
     def test_exchange_template_uses_short_label_by_default(self):
         self.app.config.exchange_short_names = {"kucoin": "KC", "binance": "BN"}
@@ -246,19 +271,100 @@ class UIRenderTests(unittest.TestCase):
 
     def test_build_trade_url_supports_binance_c2c(self):
         url = BinanceC2CPriceSource.build_trade_url("USDT-CNY")
-        self.assertEqual(url, "https://p2p.binance.com/zh-CN/trade/sell/USDT?fiat=CNY&payment=all-payments")
+        self.assertEqual(url, "https://p2p.binance.com/trade/sell/USDT?fiat=CNY&payment=all-payments")
 
     def test_build_trade_url_supports_kucoin_spot(self):
         self.assertEqual(KucoinPriceSource.build_trade_url("btc_usdt"), "https://www.kucoin.com/trade/BTC-USDT")
 
     def test_build_trade_url_supports_futures(self):
-        self.assertIn("binance.com/en/futures", BinanceFuturesPriceSource.build_trade_url("BTC-USDT"))
+        self.assertIn("binance.com/futures", BinanceFuturesPriceSource.build_trade_url("BTC-USDT"))
         self.assertIn("kucoin.com/futures/trade", KucoinFuturesPriceSource.build_trade_url("XBTUSDTM"))
+
+    def test_build_trade_url_supports_web3(self):
+        self.assertEqual(Web3PriceSource.build_trade_url("ETH-USD"), "https://www.coingecko.com/en/coins/ethereum")
+        self.assertEqual(Web3PriceSource.build_trade_url("CG-AVALANCHE-2-USD"), "https://www.coingecko.com/en/coins/avalanche-2")
+        self.assertEqual(
+            Web3PriceSource.build_trade_url("PAIR:ETHEREUM:0XB26A868FFA4CBBA926970D7AE9C6A36D088EE38C"),
+            "https://dexscreener.com/ethereum/0xb26a868ffa4cbba926970d7ae9c6a36d088ee38c",
+        )
+        self.assertEqual(
+            Web3PriceSource.build_trade_url("PAIR:ETHEREUM:0X88E6A0C2DDD26FEEB64F039A2C41296FCB3F5640"),
+            "https://dexscreener.com/ethereum/0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
+        )
+
+    def test_web3_pair_price_request_uses_headers_and_parses_price(self):
+        captured = {}
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"pairs": [{"pairAddress": "0xB26A868fFA4Cbba926970D7AE9c6a36D088eE38C", "priceUsd": "8.079"}]}'
+
+        def fake_urlopen(request, timeout=10):
+            captured["url"] = request.full_url
+            captured["headers"] = dict(request.header_items())
+            return FakeResponse()
+
+        source = Web3PriceSource(lambda *_: None, lambda *_: None)
+        with patch("coinpricebar.sources.web3.urlopen", fake_urlopen):
+            price = source._fetch_pair_price("ethereum", "0xb26a868ffa4cbba926970d7ae9c6a36d088ee38c")
+
+        self.assertEqual(price, 8.079)
+        self.assertIn("api.dexscreener.com/latest/dex/pairs/ethereum/0xb26a868ffa4cbba926970d7ae9c6a36d088ee38c", captured["url"])
+        self.assertIn("User-agent", captured["headers"])
+
+    def test_build_app_config_preserves_multiple_pinned_title_tickers(self):
+        config = _build_app_config(
+            {
+                "ui": {
+                    "title_separator": " · ",
+                    "tickers": [
+                        {"exchange": "kucoin", "symbol": "BTC-USDT", "display_name": "BTC", "enabled": True},
+                        {"exchange": "binance", "symbol": "ETH-USDT", "display_name": "ETH", "enabled": True},
+                    ],
+                    "ticker_preferences": [
+                        {"key": "kucoin::BTC-USDT", "visible": True, "order": 0, "pinned_title": True},
+                        {"key": "binance::ETH-USDT", "visible": True, "order": 1, "pinned_title": True},
+                    ],
+                }
+            },
+            AppConfig.default(),
+        )
+
+        self.assertEqual(config.title_separator, " · ")
+        self.assertTrue(config.ticker_preferences["kucoin::btc-usdt"].pinned_title)
+        self.assertTrue(config.ticker_preferences["binance::eth-usdt"].pinned_title)
+
+    def test_build_app_config_falls_back_to_first_title_ticker_when_none_pinned(self):
+        config = _build_app_config(
+            {
+                "ui": {
+                    "tickers": [
+                        {"exchange": "kucoin", "symbol": "BTC-USDT", "display_name": "BTC", "enabled": True},
+                        {"exchange": "binance", "symbol": "ETH-USDT", "display_name": "ETH", "enabled": True},
+                    ],
+                    "ticker_preferences": [
+                        {"key": "kucoin::BTC-USDT", "visible": True, "order": 0, "pinned_title": False},
+                        {"key": "binance::ETH-USDT", "visible": True, "order": 1, "pinned_title": False},
+                    ],
+                }
+            },
+            AppConfig.default(),
+        )
+
+        self.assertTrue(config.ticker_preferences["kucoin::btc-usdt"].pinned_title)
+        self.assertFalse(config.ticker_preferences["binance::eth-usdt"].pinned_title)
 
     def test_source_registry_exposes_standardized_plugin_metadata(self):
         self.assertEqual(get_source_class("kucoin").get_display_label(), "KuCoin")
         self.assertEqual(get_source_class("binance_c2c").get_home_url(), "https://p2p.binance.com/")
         self.assertIsNotNone(get_source_class("binance_futures").get_menu_icon_style())
+        self.assertEqual(get_source_class("web3").get_display_label(), "Web3")
 
     def test_menu_label_uses_plugin_metadata(self):
         self.assertEqual(CoinPriceBarApp._menu_label(self.app, "binance_c2c"), "Binance C2C")
@@ -336,7 +442,9 @@ class UIRenderTests(unittest.TestCase):
         self.assertIn("id=\"ui_refresh_interval_wrap\"", html)
         self.assertIn("id=\"performance_value_hint\"", html)
         self.assertIn("id=\"title_template\"", html)
+        self.assertIn("id=\"title_template_multi\"", html)
         self.assertIn("id=\"menu_template\"", html)
+        self.assertNotIn("id=\"max_visible\"", html)
         self.assertNotIn("id=\"advanced_template_editor\"", html)
         self.assertIn("data-apply-template", html)
         self.assertIn("data-variable-name", html)

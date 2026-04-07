@@ -8,20 +8,24 @@ from typing import Dict, List
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
 DEFAULT_DISPLAY_FIELDS = ["exchange", "symbol", "price", "change_percent", "status"]
 DEFAULT_TITLE_TEMPLATE = "{exchange}:{symbol} {price}"
+DEFAULT_TITLE_SEPARATOR = " | "
 DEFAULT_MENU_TEMPLATE = "{exchange}:{symbol} {price} ({change_percent})"
 FORMAT_PRESETS = {
     "short": {
         "title_template": "{exchange_icon}{symbol} {price}",
+        "title_template_multi": "{symbol} {price}",
         "menu_template": "{exchange_icon}{symbol} {price} ({change_percent})",
         "label": "短格式",
     },
     "long": {
         "title_template": "{exchange_icon}{exchange_full} {symbol} 最新价 {price}",
+        "title_template_multi": "{exchange} {symbol} {price}",
         "menu_template": "{exchange_icon}{exchange_full} {symbol} 最新价 {price} 涨跌 {change_percent} 状态 {status}",
         "label": "长格式",
     },
     "custom": {
         "title_template": DEFAULT_TITLE_TEMPLATE,
+        "title_template_multi": DEFAULT_TITLE_TEMPLATE,
         "menu_template": DEFAULT_MENU_TEMPLATE,
         "label": "自定义",
     },
@@ -33,12 +37,13 @@ OFFICIAL_EXCHANGE_ICON_URLS = {
     "binance_c2c": "https://public.bnbstatic.com/static/images/common/favicon.ico",
     "kucoin_futures": "https://www.kucoin.com/logo.png",
     "binance_futures": "https://public.bnbstatic.com/static/images/common/favicon.ico",
+    "web3": "",
 }
 EXCHANGE_ICON_PRESETS = {
-    "none": {"kucoin": "", "binance": "", "binance_c2c": "", "kucoin_futures": "", "binance_futures": ""},
-    "emoji": {"kucoin": "🟢 ", "binance": "🟡 ", "binance_c2c": "💱 ", "kucoin_futures": "📈 ", "binance_futures": "📊 "},
-    "text": {"kucoin": "[KC] ", "binance": "[BN] ", "binance_c2c": "[C2C] ", "kucoin_futures": "[KF] ", "binance_futures": "[BF] "},
-    "official": {"kucoin": "", "binance": "", "binance_c2c": "", "kucoin_futures": "", "binance_futures": ""},
+    "none": {"kucoin": "", "binance": "", "binance_c2c": "", "kucoin_futures": "", "binance_futures": "", "web3": ""},
+    "emoji": {"kucoin": "🟢 ", "binance": "🟡 ", "binance_c2c": "💱 ", "kucoin_futures": "📈 ", "binance_futures": "📊 ", "web3": "🧩 "},
+    "text": {"kucoin": "[KC] ", "binance": "[BN] ", "binance_c2c": "[C2C] ", "kucoin_futures": "[KF] ", "binance_futures": "[BF] ", "web3": "[W3] "},
+    "official": {"kucoin": "", "binance": "", "binance_c2c": "", "kucoin_futures": "", "binance_futures": "", "web3": ""},
 }
 ICON_STYLE_OPTIONS = {
     "none": "无图标",
@@ -190,6 +195,7 @@ DEFAULT_TICKERS = [
     ("kucoin", "ETH-USDT", "ETH"),
     ("binance", "ETH-USDT", "ETH"),
     ("binance_c2c", "USDT-CNY", "U/CNY"),
+    ("web3", "PAIR:ETHEREUM:0XB26A868FFA4CBBA926970D7AE9C6A36D088EE38C", "KCS"),
 ]
 PERFORMANCE_PRESETS = {
     "stable": 0.5,
@@ -206,6 +212,7 @@ SUPPORTED_EXCHANGES = {
     "binance_c2c": "Binance C2C",
     "kucoin_futures": "KuCoin Futures",
     "binance_futures": "Binance Futures",
+    "web3": "Web3",
 }
 DEFAULT_EXCHANGE_SHORT_NAMES = {
     "kucoin": "KC",
@@ -213,6 +220,7 @@ DEFAULT_EXCHANGE_SHORT_NAMES = {
     "binance_c2c": "C2C",
     "kucoin_futures": "KF",
     "binance_futures": "BF",
+    "web3": "W3",
 }
 
 
@@ -247,11 +255,12 @@ class ExchangeConfig:
 
 @dataclass
 class AppConfig:
-    max_visible: int = 3
     title_index: int = 0
     display_fields: List[str] = field(default_factory=lambda: list(DEFAULT_DISPLAY_FIELDS))
     format_mode: str = DEFAULT_FORMAT_MODE
     title_template: str = DEFAULT_TITLE_TEMPLATE
+    title_template_multi: str = DEFAULT_TITLE_TEMPLATE
+    title_separator: str = DEFAULT_TITLE_SEPARATOR
     menu_template: str = DEFAULT_MENU_TEMPLATE
     icon_style: str = DEFAULT_ICON_STYLE
     exchange_icons: Dict[str, str] = field(default_factory=lambda: dict(EXCHANGE_ICON_PRESETS[DEFAULT_ICON_STYLE]))
@@ -276,11 +285,12 @@ class AppConfig:
                 pinned_title=index == 0,
             )
         return cls(
-            max_visible=max(4, len(ticker_items)),
             title_index=0,
             display_fields=list(DEFAULT_DISPLAY_FIELDS),
             format_mode=DEFAULT_FORMAT_MODE,
             title_template=FORMAT_PRESETS[DEFAULT_FORMAT_MODE]["title_template"],
+            title_template_multi=FORMAT_PRESETS[DEFAULT_FORMAT_MODE]["title_template"],
+            title_separator=DEFAULT_TITLE_SEPARATOR,
             menu_template=FORMAT_PRESETS[DEFAULT_FORMAT_MODE]["menu_template"],
             icon_style=DEFAULT_ICON_STYLE,
             exchange_icons=dict(EXCHANGE_ICON_PRESETS[DEFAULT_ICON_STYLE]),
@@ -337,16 +347,18 @@ def _resolve_refresh_interval(ui: dict, default_config: AppConfig) -> tuple[str,
     return mode, (custom_value if preset_value is None else float(preset_value))
 
 
-def _resolve_templates(ui: dict, default_config: AppConfig) -> tuple[str, str, str]:
+def _resolve_templates(ui: dict, default_config: AppConfig) -> tuple[str, str, str, str]:
     format_mode = _normalize_format_mode(ui.get("format_mode", default_config.format_mode))
     preset = FORMAT_PRESETS[format_mode]
     if format_mode == "custom":
         title_template = str(ui.get("title_template", default_config.title_template))
+        title_template_multi = str(ui.get("title_template_multi", ui.get("title_template", default_config.title_template_multi)))
         menu_template = str(ui.get("menu_template", default_config.menu_template))
     else:
         title_template = preset["title_template"]
+        title_template_multi = str(preset.get("title_template_multi", preset["title_template"]))
         menu_template = preset["menu_template"]
-    return format_mode, title_template, menu_template
+    return format_mode, title_template, title_template_multi, menu_template
 
 
 def _load_exchange_configs(raw: object, fallback: Dict[str, ExchangeConfig]) -> Dict[str, ExchangeConfig]:
@@ -438,7 +450,7 @@ def _normalize_ticker_preferences_for_tickers(
     tickers: List[TickerConfig],
 ) -> Dict[str, UITickerPreference]:
     normalized: Dict[str, UITickerPreference] = {}
-    pinned_key = next((key for key, pref in preferences.items() if pref.pinned_title), "")
+    pinned_keys = {key for key, pref in preferences.items() if pref.pinned_title}
     for index, ticker in enumerate(tickers):
         key = ticker.key.lower()
         existing = preferences.get(key)
@@ -446,7 +458,7 @@ def _normalize_ticker_preferences_for_tickers(
             key=key,
             visible=existing.visible if existing else True,
             order=index,
-            pinned_title=(key == pinned_key) if pinned_key else index == 0,
+            pinned_title=(key in pinned_keys) if pinned_keys else index == 0,
         )
     if normalized and not any(pref.pinned_title for pref in normalized.values()):
         first_key = tickers[0].key.lower()
@@ -470,11 +482,12 @@ def _serialize_default_config(default_config: AppConfig) -> Dict[str, object]:
     return {
         "ui": {
             "language": default_config.language,
-            "max_visible": default_config.max_visible,
             "title_index": default_config.title_index,
             "display_fields": list(default_config.display_fields),
             "format_mode": default_config.format_mode,
             "title_template": default_config.title_template,
+            "title_template_multi": default_config.title_template_multi,
+            "title_separator": default_config.title_separator,
             "menu_template": default_config.menu_template,
             "template_examples": list(TEMPLATE_EXAMPLES),
             "template_variable_groups": list(TEMPLATE_VARIABLE_GROUPS),
@@ -507,7 +520,8 @@ def _build_app_config(raw: Dict[str, object], default_config: AppConfig) -> AppC
         ui = {}
 
     performance_mode, ui_refresh_interval = _resolve_refresh_interval(ui, default_config)
-    format_mode, title_template, menu_template = _resolve_templates(ui, default_config)
+    format_mode, title_template, title_template_multi, menu_template = _resolve_templates(ui, default_config)
+    title_separator = str(ui.get("title_separator", default_config.title_separator))
     icon_style = _normalize_icon_style(ui.get("icon_style", default_config.icon_style))
     tickers = _load_ticker_configs(ui.get("tickers"))
     fallback_prefs: Dict[str, UITickerPreference] = {}
@@ -524,12 +538,7 @@ def _build_app_config(raw: Dict[str, object], default_config: AppConfig) -> AppC
     if not isinstance(display_fields, list):
         display_fields = list(default_config.display_fields)
 
-    max_visible_raw = ui.get("max_visible", default_config.max_visible)
     title_index_raw = ui.get("title_index", default_config.title_index)
-    try:
-        max_visible = max(1, int(max_visible_raw))
-    except (TypeError, ValueError):
-        max_visible = default_config.max_visible
     try:
         title_index = max(0, int(title_index_raw))
     except (TypeError, ValueError):
@@ -539,11 +548,12 @@ def _build_app_config(raw: Dict[str, object], default_config: AppConfig) -> AppC
     ticker_preferences = _normalize_ticker_preferences_for_tickers(ticker_preferences, tickers)
 
     return AppConfig(
-        max_visible=max_visible,
         title_index=title_index,
         display_fields=_sanitize_display_fields(display_fields),
         format_mode=format_mode,
         title_template=title_template,
+        title_template_multi=title_template_multi,
+        title_separator=title_separator,
         menu_template=menu_template,
         icon_style=icon_style,
         exchange_icons=_load_exchange_icons(ui.get("exchange_icons"), icon_style),

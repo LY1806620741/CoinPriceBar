@@ -82,8 +82,6 @@
     <select id="language"></select>
     <label data-i18n="exchange_enable">启用交易所</label>
     <div id="exchange_flags" class="exchange-grid"></div>
-    <label for="max_visible" data-i18n="max_visible">显示数量</label>
-    <input id="max_visible" type="number" min="1" />
     <label for="format_mode" data-i18n="format_mode">格式模式</label>
     <div>
       <select id="format_mode"></select>
@@ -139,10 +137,18 @@
               <p id="template_editor_hint" class="muted template-editor-hint" data-i18n="template_editor_hint">自定义就是直接修改模板；下面会给推荐预设，右侧可点变量查看其可能值。</p>
               <div class="editor-card">
                 <div class="editor-card-header">
-                  <strong data-i18n="title_template">标题模板</strong>
+                  <strong data-i18n="title_template">单项标题模板</strong>
                   <span class="muted" data-i18n="title_editor_hint">显示在顶部状态栏，建议短一些。</span>
                 </div>
                 <textarea id="title_template"></textarea>
+                <div style="height: 10px;"></div>
+                <label for="title_template_multi" data-i18n="title_template_multi">多项标题模板</label>
+                <textarea id="title_template_multi"></textarea>
+                <div class="muted" data-i18n="title_multi_editor_hint">当有多个交易对勾选“标题栏显示”时，会对每一项使用这个模板，再按分隔符拼接。</div>
+                <div style="height: 10px;"></div>
+                <label for="title_separator" data-i18n="title_separator">标题分隔符</label>
+                <input id="title_separator" type="text" maxlength="32" />
+                <div class="muted" data-i18n="title_separator_hint">当多个交易对勾选“置顶标题”时，每个标题项会先按标题模板渲染，再用这个分隔符拼接。</div>
               </div>
               <div class="editor-card">
                 <div class="editor-card-header">
@@ -224,20 +230,20 @@
     const I18N = {
       'zh-CN': {
         title: 'CoinPriceBar UI 配置面板', hint: '这里编辑的是 UI 展示配置与监控项配置。',
-        language: '语言', exchange_enable: '启用交易所', exchange_short_names: '交易所短标识', exchange_icons: '交易所图标预览', max_visible: '显示数量',
-        format_mode: '格式模式', icon_style: '交易所图标', template_editor: '模板编辑', title_template: '标题模板', menu_template: '菜单模板', template_examples: '模板例子',
+        language: '语言', exchange_enable: '启用交易所', exchange_short_names: '交易所短标识', exchange_icons: '交易所图标预览',
+        format_mode: '格式模式', icon_style: '交易所图标', template_editor: '模板编辑', title_template: '单项标题模板', title_template_multi: '多项标题模板', menu_template: '菜单模板', template_examples: '模板例子',
         template_variables: '变量列表', style_options: '样式列表', template_reference: '侧边参考',
         custom_display_config: '自定义展示', custom_tab_exchange: '交易所展示', custom_tab_template: '模板编辑',
         live_preview: '实时预览', title_preview: '标题预览', menu_preview: '菜单预览',
         display_fields: '降级字段', display_fields_hint: '仅自定义格式使用，用于模板字段无法渲染时的备用展示顺序。', show_exchange_links: '显示交易所链接', performance_mode: '性能模式',
         refresh_interval: '自定义刷新频率（秒）', ticker_list: '监控交易对配置', enabled: '启用监控', visible: '显示',
-        pinned_title: '置顶标题', exchange: '交易所', symbol: '交易对', display_name: '名称', remove: '删除',
+        pinned_title: '标题栏显示', exchange: '交易所', symbol: '交易对', display_name: '名称', remove: '删除', title_separator: '标题分隔符', title_separator_hint: '当多个交易对勾选“标题栏显示”时，会先逐项套用标题模板，再用这里的分隔符拼接。官方图标模式下若混合多个交易所，只保留文本不显示单个 Logo。',
         add_ticker: '添加交易对', save: '保存并应用', reload: '重新读取当前配置',
         performance_hint: '稳定 / 平衡 / 实时 / 自定义', custom_hint: '仅在性能模式为“自定义”时生效，可手动填写秒数。', format_hint: '短格式 / 长格式 / 自定义',
         stable: '稳定', balanced: '平衡', realtime: '实时', custom: '自定义', short: '短格式', long: '长格式',
         none: '无图标', emoji: 'Emoji 图标', text: '文本图标', official: '官方图标', remove_btn: '删除',
         saved: '保存成功，已应用到状态栏。', loading: '加载中...', custom_only: '仅在自定义模式下可编辑模板。',
-        template_editor_hint: '自定义就是直接修改模板；下面会给推荐预设，右侧可点变量查看其可能值。', title_editor_hint: '显示在顶部状态栏，建议短一些。', menu_editor_hint: '显示在下拉菜单，可放更多字段。',
+        template_editor_hint: '自定义就是直接修改模板；下面会给推荐预设，右侧可点变量查看其可能值。', title_editor_hint: '只有一个标题项时使用这个模板。', title_multi_editor_hint: '有多个标题项时，会对每一项使用这个模板，再按下面的分隔符拼接。', menu_editor_hint: '显示在下拉菜单，可放更多字段。',
         template_composition_guide: '推荐顺序：来源 → 交易对 → 价格 → 涨跌 → 状态', possible_values: '可能值列表', text_value: '文本', number_value: '数值', title_slot: '标题', menu_slot: '菜单', both_slots: '标题/菜单',
         format_sidebar_hint: '预设模式会自动套用模板；自定义模式可自由编辑。', icon_sidebar_hint: '官方 Logo 优先走网络/缓存，失败再回退。', non_official_icon_hint: '文本 / Emoji / 空图标模式。',
         custom_config_collapsed_hint: '当前使用预设格式，切换到“自定义”后再配置图标、短标识、模板与预览。', icon_style_hint: '只有在自定义展示时才需要调整图标策略。', exchange_icons_hint: '官方图标模式显示预览，其它模式可直接编辑前缀。', exchange_short_names_hint: '用于 {exchange} / {exchange_short} 变量。',
@@ -247,20 +253,20 @@
       },
       'en-US': {
         title: 'CoinPriceBar UI Config Panel', hint: 'Edit UI display settings and monitored tickers here.',
-        language: 'Language', exchange_enable: 'Enabled exchanges', exchange_short_names: 'Exchange short labels', exchange_icons: 'Exchange icon preview', max_visible: 'Visible count',
-        format_mode: 'Format mode', icon_style: 'Exchange icon', template_editor: 'Template editor', title_template: 'Title template', menu_template: 'Menu template', template_examples: 'Template examples',
+        language: 'Language', exchange_enable: 'Enabled exchanges', exchange_short_names: 'Exchange short labels', exchange_icons: 'Exchange icon preview',
+        format_mode: 'Format mode', icon_style: 'Exchange icon', template_editor: 'Template editor', title_template: 'Single-title template', title_template_multi: 'Multi-title template', menu_template: 'Menu template', template_examples: 'Template examples',
         template_variables: 'Variables', style_options: 'Styles', template_reference: 'Sidebar reference',
         custom_display_config: 'Custom display', custom_tab_exchange: 'Exchange display', custom_tab_template: 'Template editor',
         live_preview: 'Live preview', title_preview: 'Title preview', menu_preview: 'Menu preview',
         display_fields: 'Fallback fields', display_fields_hint: 'Only used in Custom format as the fallback field order when a template cannot be rendered.', show_exchange_links: 'Show exchange links', performance_mode: 'Performance mode',
         refresh_interval: 'Custom refresh interval (seconds)', ticker_list: 'Monitored tickers', enabled: 'Enabled', visible: 'Visible',
-        pinned_title: 'Pin to title', exchange: 'Exchange', symbol: 'Symbol', display_name: 'Display name', remove: 'Remove',
+        pinned_title: 'Show in title', exchange: 'Exchange', symbol: 'Symbol', display_name: 'Display name', remove: 'Remove', title_separator: 'Title separator', title_separator_hint: 'When multiple rows are shown in the title, each row is rendered with the title template first and then joined with this separator. In official-icon mode, mixed exchanges fall back to text only instead of a single misleading logo.',
         add_ticker: 'Add ticker', save: 'Save and apply', reload: 'Reload current config',
         performance_hint: 'Stable / Balanced / Realtime / Custom', custom_hint: 'Only used when performance mode is Custom; enter the interval in seconds here.', format_hint: 'Short / Long / Custom',
         stable: 'Stable', balanced: 'Balanced', realtime: 'Realtime', custom: 'Custom', short: 'Short', long: 'Long',
         none: 'No icon', emoji: 'Emoji icons', text: 'Text icons', official: 'Official icons', remove_btn: 'Remove',
         saved: 'Saved successfully and applied to the menu bar.', loading: 'Loading...', custom_only: 'Templates are editable only in Custom mode.',
-        template_editor_hint: 'Custom means editing the template directly; recommended presets are shown below, and you can click variables on the right to inspect values.', title_editor_hint: 'Shown in the menu bar title, so keep it short.', menu_editor_hint: 'Shown in the dropdown menu, so more fields fit here.',
+        template_editor_hint: 'Custom means editing the template directly; recommended presets are shown below, and you can click variables on the right to inspect values.', title_editor_hint: 'Used when only one ticker is shown in the title.', title_multi_editor_hint: 'Used when multiple title tickers are selected; each title item is rendered with this template and then joined with the separator below.', menu_editor_hint: 'Shown in the dropdown menu, so more fields fit here.',
         template_composition_guide: 'Recommended order: source → symbol → price → change → status', possible_values: 'Possible values', text_value: 'Text', number_value: 'Numeric', title_slot: 'Title', menu_slot: 'Menu', both_slots: 'Title/Menu',
         format_sidebar_hint: 'Preset modes lock template content; Custom mode lets you edit freely.', icon_sidebar_hint: 'Official logos prefer web/cache and fall back when unavailable.', non_official_icon_hint: 'Text / Emoji / empty icon mode.',
         custom_config_collapsed_hint: 'Preset format is active. Switch to Custom before editing icons, short labels, templates, or previews.', icon_style_hint: 'Only adjust icon strategy when you really need a custom display.', exchange_icons_hint: 'Official icon mode shows previews; other modes let you edit prefixes directly.', exchange_short_names_hint: 'Used by {exchange} / {exchange_short}.',
@@ -284,6 +290,8 @@
     function applyTemplatePreset(template, target) {
       if (target === 'title' || target === 'both') {
         document.getElementById('title_template').value = template;
+        const multiInput = document.getElementById('title_template_multi');
+        if (multiInput) multiInput.value = template;
       }
       if (target === 'menu' || target === 'both') {
         document.getElementById('menu_template').value = template;
@@ -419,9 +427,9 @@
       return `<span>${icons[exchange] || ''}</span>`;
     }
 
-    function previewContext() {
-      const firstTicker = tickerRows[0] || { exchange: 'kucoin', symbol: 'BTC-USDT', display_name: 'BTC' };
-      const exchange = String(firstTicker.exchange || 'kucoin').toLowerCase();
+    function previewContext(row) {
+      const ticker = row || { exchange: 'kucoin', symbol: 'BTC-USDT', display_name: 'BTC' };
+      const exchange = String(ticker.exchange || 'kucoin').toLowerCase();
       const shortNames = currentExchangeShortNames();
       const exchangeShort = shortNames[exchange] || exchange.toUpperCase();
       const exchangeFull = current.exchanges?.[exchange] || exchange;
@@ -433,7 +441,7 @@
         exchange_short: exchangeShort,
         exchange_full: exchangeFull,
         exchange_icon: exchangeIcon,
-        symbol: firstTicker.display_name || firstTicker.symbol || 'BTC',
+        symbol: ticker.display_name || ticker.symbol || 'BTC',
         price: '67019.00',
         change: '↑+520.00',
         change_percent: '↑0.78%',
@@ -452,18 +460,39 @@
       }
     }
 
+    function titlePreviewRows() {
+      normalizeOrders();
+      const orderedRows = sortedTickerRows().filter(row => row.enabled !== false && row.visible !== false);
+      const pinnedRows = orderedRows.filter(row => row.pinned_title);
+      if (pinnedRows.length > 0) {
+        return pinnedRows;
+      }
+      return orderedRows.slice(0, 1);
+    }
+
     function renderOneToOnePreview() {
-      const context = previewContext();
       const titleTemplate = document.getElementById('title_template').value;
+      const multiTitleTemplate = document.getElementById('title_template_multi').value || titleTemplate;
+      const titleSeparator = document.getElementById('title_separator').value || ' | ';
       const menuTemplate = document.getElementById('menu_template').value;
-      const titleRaw = formatTemplate(titleTemplate, context).trim() || `${context.exchange} ${context.symbol} ${context.price}`;
-      const menuRaw = formatTemplate(menuTemplate, context).trim() || `${context.exchange} ${context.symbol} ${context.price}`;
-      const titleText = withTrendSuffix(titleRaw, context.__change_value);
-      const menuText = withStatusSuffix(withTrendSuffix(menuRaw, context.__change_value), context.__connection_status);
-      const iconMarkup = iconHtml(context.__exchange);
-      const officialPrefix = document.getElementById('icon_style').value === 'official' ? iconMarkup : '';
-      document.getElementById('title_preview').innerHTML = `${officialPrefix}<span>${titleText}</span>`;
-      document.getElementById('menu_preview').innerHTML = `${officialPrefix}<span>${menuText}</span>`;
+      const titleRows = titlePreviewRows();
+      const effectiveTitleTemplate = titleRows.length > 1 ? multiTitleTemplate : titleTemplate;
+      const titleParts = titleRows.map(row => {
+        const context = previewContext(row);
+        const raw = formatTemplate(effectiveTitleTemplate, context).trim() || `${context.exchange} ${context.symbol} ${context.price}`;
+        return withTrendSuffix(raw, context.__change_value);
+      }).filter(Boolean);
+      const firstContext = previewContext(titleRows[0]);
+      const menuRaw = formatTemplate(menuTemplate, firstContext).trim() || `${firstContext.exchange} ${firstContext.symbol} ${firstContext.price}`;
+      const titleText = titleParts.join(titleSeparator).trim() || `${firstContext.exchange} ${firstContext.symbol} ${firstContext.price}`;
+      const menuText = withStatusSuffix(withTrendSuffix(menuRaw, firstContext.__change_value), firstContext.__connection_status);
+      const titleExchanges = new Set(titleRows.map(row => String(row.exchange || '').toLowerCase()).filter(Boolean));
+      const shouldShowOfficialTitleIcon = document.getElementById('icon_style').value === 'official' && titleExchanges.size === 1;
+      const iconMarkup = iconHtml(firstContext.__exchange);
+      const titleOfficialPrefix = shouldShowOfficialTitleIcon ? iconMarkup : '';
+      const menuOfficialPrefix = document.getElementById('icon_style').value === 'official' ? iconMarkup : '';
+      document.getElementById('title_preview').innerHTML = `${titleOfficialPrefix}<span>${titleText}</span>`;
+      document.getElementById('menu_preview').innerHTML = `${menuOfficialPrefix}<span>${menuText}</span>`;
     }
 
     function applyI18n() {
@@ -686,7 +715,8 @@
             <strong>${escapeHtml(value.label || key)}</strong>
             <span class="badge">${escapeHtml(key)}</span>
           </div>
-          <code>${escapeHtml(value.title_template || '')}</code>
+          <code>${escapeHtml(tr('title_template'))}: ${escapeHtml(value.title_template || '')}</code>
+          <code>${escapeHtml(tr('title_template_multi'))}: ${escapeHtml(value.title_template_multi || value.title_template || '')}</code>
           <code>${escapeHtml(value.menu_template || '')}</code>
         </div>
       `).join('');
@@ -716,19 +746,24 @@
     function syncFormatEditorState() {
       const mode = document.getElementById('format_mode').value;
       const titleInput = document.getElementById('title_template');
+      const multiTitleInput = document.getElementById('title_template_multi');
       const menuInput = document.getElementById('menu_template');
       const editable = mode === 'custom';
       setCustomSectionVisibility(editable);
       setDisplayFieldsVisibility(editable);
       titleInput.readOnly = !editable;
+      multiTitleInput.readOnly = !editable;
       menuInput.readOnly = !editable;
       titleInput.style.opacity = editable ? '1' : '0.7';
+      multiTitleInput.style.opacity = editable ? '1' : '0.7';
       menuInput.style.opacity = editable ? '1' : '0.7';
       if (!editable && current?.formatPresets?.[mode]) {
         titleInput.value = current.formatPresets[mode].title_template;
+        multiTitleInput.value = current.formatPresets[mode].title_template_multi || current.formatPresets[mode].title_template;
         menuInput.value = current.formatPresets[mode].menu_template;
       }
       titleInput.title = editable ? '' : tr('custom_only');
+      multiTitleInput.title = editable ? '' : tr('custom_only');
       menuInput.title = editable ? '' : tr('custom_only');
       renderOneToOnePreview();
     }
@@ -816,7 +851,7 @@
           <td><span class="drag-handle">☰</span></td>
           <td><input type="checkbox" data-field="enabled" ${row.enabled ? 'checked' : ''}></td>
           <td><input type="checkbox" data-field="visible" ${row.visible ? 'checked' : ''}></td>
-          <td><input type="radio" name="pinned_title" data-field="pinned_title" ${row.pinned_title ? 'checked' : ''}></td>
+          <td><input type="checkbox" data-field="pinned_title" ${row.pinned_title ? 'checked' : ''}></td>
           <td>
             <select data-field="exchange">
               ${Object.entries(current.exchanges).map(([key, label]) => `<option value="${key}" ${row.exchange === key ? 'selected' : ''}>${label}</option>`).join('')}
@@ -834,11 +869,6 @@
               row[field] = !!event.target.checked;
             } else {
               row[field] = event.target.value;
-            }
-            if (field === 'pinned_title' && row.pinned_title) {
-              tickerRows.forEach(item => { if (item.key !== row.key) item.pinned_title = false; });
-              renderTickerRows();
-              return;
             }
             if (field === 'exchange') {
               row.exchange = String(event.target.value || '').toLowerCase();
@@ -887,10 +917,11 @@
       return {
         ui: {
           language: document.getElementById('language').value,
-          max_visible: parseInt(document.getElementById('max_visible').value || '1', 10),
           title_index: pinnedIndex >= 0 ? pinnedIndex : 0,
           format_mode: document.getElementById('format_mode').value,
           title_template: document.getElementById('title_template').value,
+          title_template_multi: document.getElementById('title_template_multi').value,
+          title_separator: document.getElementById('title_separator').value,
           menu_template: document.getElementById('menu_template').value,
           icon_style: document.getElementById('icon_style').value,
           display_fields: String(document.getElementById('display_fields').value || '').split(',').map(x => x.trim()).filter(Boolean),
@@ -936,8 +967,9 @@
       renderTemplateExamples(state.templateExamples || []);
       renderTemplateVariables(state.templateVariables || []);
       renderStyleOptions();
-      document.getElementById('max_visible').value = ui.max_visible || 1;
       document.getElementById('title_template').value = ui.title_template || '';
+      document.getElementById('title_template_multi').value = ui.title_template_multi || ui.title_template || '';
+      document.getElementById('title_separator').value = ui.title_separator || ' | ';
       document.getElementById('menu_template').value = ui.menu_template || '';
       document.getElementById('display_fields').value = (ui.display_fields || []).join(', ');
       document.getElementById('show_exchange_links').checked = !!ui.show_exchange_links;
@@ -978,8 +1010,9 @@
     document.getElementById('performance_mode').addEventListener('change', syncConditionalFieldVisibility);
     document.getElementById('icon_style').addEventListener('change', (event) => applyIconPreset(event.target.value));
     document.getElementById('title_template').addEventListener('input', renderOneToOnePreview);
+    document.getElementById('title_template_multi').addEventListener('input', renderOneToOnePreview);
+    document.getElementById('title_separator').addEventListener('input', renderOneToOnePreview);
     document.getElementById('menu_template').addEventListener('input', renderOneToOnePreview);
-    document.getElementById('max_visible').addEventListener('input', renderOneToOnePreview);
     document.getElementById('ui_refresh_interval').addEventListener('input', syncPerformanceModeUI);
     document.querySelectorAll('[data-custom-tab-button]').forEach(button => {
       button.addEventListener('click', () => activateCustomTab(button.dataset.customTabButton));

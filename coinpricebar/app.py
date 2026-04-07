@@ -176,10 +176,11 @@ class CoinPriceBarApp(rumps.App):
         ui = payload.get("ui") or {}
         config = load_app_config(self.config_path)
         config.language = str(ui.get("language", config.language)).strip() or config.language
-        config.max_visible = max(1, int(ui.get("max_visible", config.max_visible)))
         config.title_index = max(0, int(ui.get("title_index", config.title_index)))
         config.format_mode = str(ui.get("format_mode", config.format_mode)).strip().lower() or config.format_mode
         config.title_template = str(ui.get("title_template", config.title_template))
+        config.title_template_multi = str(ui.get("title_template_multi", ui.get("title_template", config.title_template_multi)))
+        config.title_separator = str(ui.get("title_separator", config.title_separator))
         config.menu_template = str(ui.get("menu_template", config.menu_template))
         config.icon_style = str(ui.get("icon_style", config.icon_style)).strip().lower() or config.icon_style
         display_fields = ui.get("display_fields", config.display_fields)
@@ -269,15 +270,26 @@ class CoinPriceBarApp(rumps.App):
     def _visible_tickers(self) -> list[TickerConfig]:
         ordered = [ticker for ticker in self.all_tickers if ticker.enabled]
         visible = [ticker for ticker in ordered if self._get_ticker_preference(ticker).visible]
-        return visible[: max(1, self.config.max_visible)]
+        return visible
+
+    def _resolve_title_tickers(self) -> list[TickerConfig]:
+        if not self.active_tickers:
+            return []
+        pinned = [ticker for ticker in self.active_tickers if CoinPriceBarApp._get_ticker_preference(self, ticker).pinned_title]
+        if pinned:
+            return pinned
+        fallback_index = min(self.config.title_index, len(self.active_tickers) - 1)
+        return [self.active_tickers[fallback_index]]
 
     def _resolve_title_ticker_index(self) -> int:
-        if not self.active_tickers:
+        title_tickers = CoinPriceBarApp._resolve_title_tickers(self)
+        if not self.active_tickers or not title_tickers:
             return 0
+        first_key = title_tickers[0].key
         for index, ticker in enumerate(self.active_tickers):
-            if self._get_ticker_preference(ticker).pinned_title:
+            if ticker.key == first_key:
                 return index
-        return min(self.config.title_index, len(self.active_tickers) - 1)
+        return 0
 
     def _rebuild_active_tickers(self):
         self.monitored_tickers = [
@@ -285,6 +297,7 @@ class CoinPriceBarApp(rumps.App):
             if ticker.enabled and self.config.exchanges.get(ticker.exchange.lower()) and self.config.exchanges[ticker.exchange.lower()].enabled
         ]
         self.active_tickers = self._visible_tickers()
+        self.title_tickers = CoinPriceBarApp._resolve_title_tickers(self)
         self.title_ticker_index = self._resolve_title_ticker_index()
 
     def _init_snapshots(self):
@@ -566,6 +579,43 @@ class CoinPriceBarApp(rumps.App):
         rendered = _with_trend_suffix(rendered, snapshot.change)
         return _with_status_suffix(rendered, snapshot.status if not is_title else "")
 
+    def _clear_title_icon(self):
+        try:
+            self.icon = None
+        except Exception:
+            try:
+                self.icon = ""
+            except Exception:
+                pass
+
+    def _resolve_title_icon_exchange(self, title_tickers: list[TickerConfig]) -> str | None:
+        if not title_tickers or self.config.icon_style != "official":
+            return None
+        exchanges = {ticker.exchange.lower() for ticker in title_tickers}
+        return title_tickers[0].exchange if len(exchanges) == 1 else None
+
+    def _refresh_title(self):
+        title_tickers = CoinPriceBarApp._resolve_title_tickers(self)
+        self.title_tickers = title_tickers
+        if not title_tickers:
+            self.title = "CoinPriceBar"
+            CoinPriceBarApp._clear_title_icon(self)
+            return
+
+        title_template = self.config.title_template if len(title_tickers) <= 1 else (self.config.title_template_multi or self.config.title_template)
+        parts = []
+        for ticker in title_tickers:
+            snapshot = self.snapshots.get(ticker.key)
+            if snapshot is not None:
+                parts.append(self._render_text(snapshot, title_template, is_title=True))
+        self.title = (self.config.title_separator or " | ").join(part for part in parts if part).strip() or "CoinPriceBar"
+
+        icon_exchange = CoinPriceBarApp._resolve_title_icon_exchange(self, title_tickers)
+        if icon_exchange:
+            self._set_title_icon(icon_exchange)
+        else:
+            CoinPriceBarApp._clear_title_icon(self)
+
     def _rebuild_ui_from_config(self):
         self._rebuild_active_tickers()
         self._init_snapshots()
@@ -574,6 +624,7 @@ class CoinPriceBarApp(rumps.App):
             self._refresh_snapshot_ui(ticker.key)
         if not self.active_tickers:
             self.title = "CoinPriceBar"
+            CoinPriceBarApp._clear_title_icon(self)
 
     def _bind_status_item_button(self):
         try:
@@ -649,7 +700,8 @@ class CoinPriceBarApp(rumps.App):
         CoinPriceBarApp._ensure_ui_dirty_state(self)
         with self._dirty_lock:
             self._dirty_menu_keys.add(key)
-            if self.active_tickers and key == self.active_tickers[self.title_ticker_index].key:
+            title_keys = {ticker.key for ticker in CoinPriceBarApp._resolve_title_tickers(self)}
+            if key in title_keys:
                 self._title_dirty = True
 
     def _drain_dirty_state(self) -> tuple[bool, list[str]]:
@@ -667,11 +719,9 @@ class CoinPriceBarApp(rumps.App):
         return title_dirty, menu_keys
 
     def _refresh_title_for_key(self, key: str):
-        snapshot = self.snapshots.get(key)
-        if not snapshot:
+        if key not in {ticker.key for ticker in CoinPriceBarApp._resolve_title_tickers(self)}:
             return
-        self.title = self._render_text(snapshot, self.config.title_template, is_title=True)
-        self._set_title_icon(snapshot.exchange)
+        CoinPriceBarApp._refresh_title(self)
 
     def _refresh_menu_item_for_key(self, key: str):
         snapshot = self.snapshots.get(key)
@@ -771,7 +821,7 @@ class CoinPriceBarApp(rumps.App):
             logging.warning(f"刷新 UI 时未找到快照: {key}")
             return
 
-        if self.active_tickers and key == self.active_tickers[self.title_ticker_index].key:
+        if key in {ticker.key for ticker in CoinPriceBarApp._resolve_title_tickers(self)}:
             CoinPriceBarApp._refresh_title_for_key(self, key)
 
         CoinPriceBarApp._refresh_menu_item_for_key(self, key)
@@ -784,7 +834,7 @@ class CoinPriceBarApp(rumps.App):
                     task()
             title_dirty, menu_keys = CoinPriceBarApp._drain_dirty_state(self)
             if title_dirty and self.active_tickers:
-                CoinPriceBarApp._refresh_title_for_key(self, self.active_tickers[self.title_ticker_index].key)
+                CoinPriceBarApp._refresh_title(self)
             for key in menu_keys:
                 CoinPriceBarApp._refresh_menu_item_for_key(self, key)
         except Exception as e:
