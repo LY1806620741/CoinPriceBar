@@ -421,6 +421,15 @@
       return values;
     }
 
+    function resolvePreviewIconKey(exchange, symbol) {
+      const exchangeKey = String(exchange || '').toLowerCase();
+      const normalizedSymbol = String(symbol || '').trim().toUpperCase();
+      if (exchangeKey === 'web3' && normalizedSymbol.startsWith('DEX:UNISWAP:')) {
+        return 'web3_uniswap';
+      }
+      return exchangeKey;
+    }
+
     function buildOfficialIcon(exchange, shortLabel, label) {
       const url = current.officialExchangeIconUrls?.[exchange] || '';
       const isWideLogo = /logo[.](png|svg|jpg|jpeg)$/i.test(url);
@@ -431,26 +440,28 @@
       return `<img class="${className}" src="${url}" alt="${label}" onerror="this.outerHTML='&lt;span class=&quot;official-icon-fallback&quot;&gt;${shortLabel}&lt;/span&gt;'">`;
     }
 
-    function iconHtml(exchange) {
+    function iconHtml(exchange, symbol='') {
+      const iconKey = resolvePreviewIconKey(exchange, symbol);
       const style = document.getElementById('icon_style').value;
       if (style === 'official') {
-        const label = current.exchanges?.[exchange] || exchange.toUpperCase();
-        const shortLabel = currentExchangeShortNames()[exchange] || exchange.toUpperCase();
-        return buildOfficialIcon(exchange, shortLabel, label);
+        const label = current.exchanges?.[exchange] || iconKey.toUpperCase();
+        const shortLabel = currentExchangeShortNames()[iconKey] || currentExchangeShortNames()[exchange] || iconKey.toUpperCase();
+        return buildOfficialIcon(iconKey, shortLabel, label);
       }
       const icons = collectExchangeIconsRaw();
-      return `<span>${icons[exchange] || ''}</span>`;
+      return `<span>${icons[iconKey] || icons[exchange] || ''}</span>`;
     }
 
     function previewContext(row) {
       const ticker = row || { exchange: 'kucoin', symbol: 'BTC-USDT', display_name: 'BTC' };
       const exchange = String(ticker.exchange || 'kucoin').toLowerCase();
+      const iconKey = resolvePreviewIconKey(exchange, ticker.symbol || '');
       const shortNames = currentExchangeShortNames();
-      const exchangeShort = shortNames[exchange] || exchange.toUpperCase();
+      const exchangeShort = shortNames[iconKey] || shortNames[exchange] || exchange.toUpperCase();
       const exchangeFull = current.exchanges?.[exchange] || exchange;
       const style = document.getElementById('icon_style').value;
       const icons = collectExchangeIconsRaw();
-      const exchangeIcon = style === 'official' ? '' : (icons[exchange] || '');
+      const exchangeIcon = style === 'official' ? '' : (icons[iconKey] || icons[exchange] || '');
       return {
         exchange: exchangeShort,
         exchange_short: exchangeShort,
@@ -462,6 +473,8 @@
         change_percent: '↑0.78%',
         status: '🟢',
         __exchange: exchange,
+        __icon_key: iconKey,
+        __symbol: ticker.symbol || '',
         __change_value: 1,
         __connection_status: '',
       };
@@ -503,7 +516,7 @@
       const menuText = withStatusSuffix(withTrendSuffix(menuRaw, firstContext.__change_value), firstContext.__connection_status);
       const titleExchanges = new Set(titleRows.map(row => String(row.exchange || '').toLowerCase()).filter(Boolean));
       const shouldShowOfficialTitleIcon = document.getElementById('icon_style').value === 'official' && titleExchanges.size === 1;
-      const iconMarkup = iconHtml(firstContext.__exchange);
+      const iconMarkup = iconHtml(firstContext.__exchange, firstContext.__symbol);
       const titleOfficialPrefix = shouldShowOfficialTitleIcon ? iconMarkup : '';
       const menuOfficialPrefix = document.getElementById('icon_style').value === 'official' ? iconMarkup : '';
       document.getElementById('title_preview').innerHTML = `${titleOfficialPrefix}<span>${titleText}</span>`;

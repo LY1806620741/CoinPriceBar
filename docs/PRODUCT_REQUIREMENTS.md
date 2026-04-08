@@ -45,6 +45,7 @@ CoinPriceBar 是一个面向 macOS 的状态栏行情应用，用于在系统菜
 - Binance C2C
 - KuCoin Futures
 - Binance Futures
+- Web3 / DEX（当前重点支持 Uniswap，后续可继续扩展其他 DEX）
 
 插件统一要求：
 
@@ -60,12 +61,19 @@ CoinPriceBar 是一个面向 macOS 的状态栏行情应用，用于在系统菜
 - 现货（Spot）
 - 合约（Futures）
 - C2C 汇率
+- Web3 / DEX 市场
 
 当前 C2C 以汇率对形式存在，例如：
 
 - `USDT-CNY`
 - `BTC-CNY`
 - `ETH-CNY`
+
+当前 Web3 市场需支持：
+
+- 精确池地址模式（`PAIR:<chain>:<pairAddress>`）
+- DEX 市场模式（`DEX:<dex>:<chain>:<tokenAddress>[:quote]`）
+- 直池报价与同链同 DEX 一跳路由报价
 
 ### 3.4 监控项管理
 
@@ -104,6 +112,7 @@ CoinPriceBar 是一个面向 macOS 的状态栏行情应用，用于在系统菜
 - 失败后回退到本地图标
 - 再失败后回退到文本/字母图标
 - 菜单内图标和标题图标应分开处理
+- 对 Web3 数据源应支持按 DEX 来源显示差异化图标（例如 Uniswap）
 
 ### 3.7 性能与刷新控制
 
@@ -147,6 +156,7 @@ CoinPriceBar 是一个面向 macOS 的状态栏行情应用，用于在系统菜
 - UI HTML 渲染测试
 - DOM 级拖拽排序测试
 - 新数据源注册和默认配置测试
+- Web3 路由报价与 DEX 图标选择测试
 
 ---
 
@@ -164,6 +174,8 @@ CoinPriceBar 是一个面向 macOS 的状态栏行情应用，用于在系统菜
 8. 支持多语言。
 9. 支持交易所图标和回退策略。
 10. 支持拖拽排序且排序结果可持久化。
+11. 支持 Web3 / DEX 行情监控与可配置报价市场。
+12. 支持 Web3 根据 DEX 来源显示不同图标与跳转目标。
 
 ---
 
@@ -185,6 +197,7 @@ CoinPriceBar 是一个面向 macOS 的状态栏行情应用，用于在系统菜
 
 - 合约代码的人类友好名称映射（例如 `XBTUSDTM -> BTC 永续`）
 - 明确显示市场类型标签（Spot / Futures / C2C）
+- 明确显示 Web3 行情的价格来源（直池 / 路由报价 / 回退估算）
 - 更细粒度的 C2C 买入价 / 卖出价模式
 - 错误状态和数据源延迟状态的更直观展示
 - 发布流程中的签名与 notarization

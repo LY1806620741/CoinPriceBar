@@ -193,6 +193,7 @@ class UIRenderTests(unittest.TestCase):
         self.assertIn("kucoin_futures", state["officialExchangeIconUrls"])
         self.assertIn("binance_futures", state["officialExchangeIconUrls"])
         self.assertIn("web3", state["officialExchangeIconUrls"])
+        self.assertIn("web3_uniswap", state["officialExchangeIconUrls"])
 
     def test_panel_state_contains_source_schema_metadata(self):
         config = AppConfig.default()

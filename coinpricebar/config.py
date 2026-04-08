@@ -38,12 +38,13 @@ OFFICIAL_EXCHANGE_ICON_URLS = {
     "kucoin_futures": "https://www.kucoin.com/logo.png",
     "binance_futures": "https://public.bnbstatic.com/static/images/common/favicon.ico",
     "web3": "",
+    "web3_uniswap": "https://app.uniswap.org/favicon.png",
 }
 EXCHANGE_ICON_PRESETS = {
-    "none": {"kucoin": "", "binance": "", "binance_c2c": "", "kucoin_futures": "", "binance_futures": "", "web3": ""},
-    "emoji": {"kucoin": "🟢 ", "binance": "🟡 ", "binance_c2c": "💱 ", "kucoin_futures": "📈 ", "binance_futures": "📊 ", "web3": "🧩 "},
-    "text": {"kucoin": "[KC] ", "binance": "[BN] ", "binance_c2c": "[C2C] ", "kucoin_futures": "[KF] ", "binance_futures": "[BF] ", "web3": "[W3] "},
-    "official": {"kucoin": "", "binance": "", "binance_c2c": "", "kucoin_futures": "", "binance_futures": "", "web3": ""},
+    "none": {"kucoin": "", "binance": "", "binance_c2c": "", "kucoin_futures": "", "binance_futures": "", "web3": "", "web3_uniswap": ""},
+    "emoji": {"kucoin": "🟢 ", "binance": "🟡 ", "binance_c2c": "💱 ", "kucoin_futures": "📈 ", "binance_futures": "📊 ", "web3": "🧩 ", "web3_uniswap": "🦄 "},
+    "text": {"kucoin": "[KC] ", "binance": "[BN] ", "binance_c2c": "[C2C] ", "kucoin_futures": "[KF] ", "binance_futures": "[BF] ", "web3": "[W3] ", "web3_uniswap": "[UNI] "},
+    "official": {"kucoin": "", "binance": "", "binance_c2c": "", "kucoin_futures": "", "binance_futures": "", "web3": "", "web3_uniswap": ""},
 }
 ICON_STYLE_OPTIONS = {
     "none": "无图标",
@@ -221,6 +222,7 @@ DEFAULT_EXCHANGE_SHORT_NAMES = {
     "kucoin_futures": "KF",
     "binance_futures": "BF",
     "web3": "W3",
+    "web3_uniswap": "UNI",
 }
 
 
