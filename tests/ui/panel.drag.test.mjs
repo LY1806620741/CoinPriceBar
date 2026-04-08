@@ -24,6 +24,7 @@ function buildState() {
         exchanges: {
           kucoin: { enabled: true },
           binance: { enabled: true },
+          web3: { enabled: true },
         },
         exchange_short_names: {
           kucoin: 'KC',
@@ -57,8 +58,27 @@ function buildState() {
     },
     officialExchangeIconUrls: { kucoin: '', binance: '' },
     languages: ['zh-CN', 'en-US'],
-    exchanges: { kucoin: 'KuCoin', binance: 'Binance' },
+    exchanges: { kucoin: 'KuCoin', binance: 'Binance', web3: 'Web3' },
     exchangeShortNames: { kucoin: 'KC', binance: 'BN' },
+    sourceSchemas: {
+      kucoin: { symbol_placeholder: 'BTC-USDT', symbol_help: '', examples: ['BTC-USDT'] },
+      binance: { symbol_placeholder: 'ETH-USDT', symbol_help: '', examples: ['ETH-USDT'] },
+      web3: {
+        symbol_placeholder: 'DEX:UNISWAP:ETHEREUM:0xTOKEN:USDC',
+        symbol_help: '支持 CoinGecko / PAIR / DEX 三种格式，DEX 示例：DEX:UNISWAP:ETHEREUM:0xTOKEN:USDC',
+        examples: ['ETH-USD', 'PAIR:ETHEREUM:0xPAIR', 'DEX:UNISWAP:ETHEREUM:0xTOKEN:USDC'],
+        editor: {
+          modes: [
+            { value: 'token', label: 'CoinGecko Token' },
+            { value: 'pair', label: 'Exact Pair' },
+            { value: 'dex', label: 'DEX Market' },
+          ],
+          chains: ['ethereum', 'base'],
+          dexes: ['auto', 'uniswap'],
+          quote_examples: ['USDC', 'USDT', 'WETH'],
+        },
+      },
+    },
   };
 }
 
@@ -89,6 +109,29 @@ async function bootPanel() {
             ok: true,
             async json() {
               return { exchange: 'kucoin', symbols: ['BTC-USDT', 'ETH-USDT', 'KCS-USDT'] };
+            },
+          };
+        }
+        if (urlText.includes('/api/web3/candidates')) {
+          return {
+            ok: true,
+            async json() {
+              return {
+                ok: true,
+                candidates: [
+                  {
+                    chain: 'ethereum',
+                    dex: 'uniswap',
+                    base_symbol: 'KCS',
+                    quote_symbol: 'USDC',
+                    liquidity_usd: 250000,
+                    price_usd: 8.47,
+                    trade_url: 'https://app.uniswap.org/swap?chain=mainnet&outputCurrency=0xf34960d9d60be18cc1d5afc1a6f012a723a28811&inputCurrency=0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+                    suggested_pair_symbol: 'PAIR:ETHEREUM:0X658069E3647FAAC148845A68C36831ECDE99134D',
+                    suggested_dex_symbol: 'DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDC',
+                  },
+                ],
+              };
             },
           };
         }
@@ -197,5 +240,74 @@ test('panel sortable initialization is handle-only and table-row based', async (
   assert.equal(sortable.options.handle, '.drag-handle');
   assert.equal(sortable.options.draggable, 'tr[data-key]');
   assert.equal(typeof sortable.options.onEnd, 'function');
+});
+
+test('panel updates symbol placeholder and help for web3 exchange rows', async () => {
+  const { dom } = await bootPanel();
+  const row = dom.window.document.querySelector('#ticker_rows tr[data-key]');
+  assert.ok(row, 'expected at least one ticker row');
+
+  const exchangeSelect = row.querySelector('select[data-field="exchange"]');
+  exchangeSelect.value = 'web3';
+  exchangeSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  const symbolInput = row.querySelector('input[data-field="symbol"]');
+  const help = row.querySelector('[data-symbol-help]');
+  assert.equal(symbolInput.placeholder, 'DEX:UNISWAP:ETHEREUM:0xTOKEN:USDC');
+  assert.match(help.textContent || '', /DEX:UNISWAP/);
+});
+
+test('panel web3 builder composes dex symbol into the shared symbol input', async () => {
+  const { dom } = await bootPanel();
+  const row = dom.window.document.querySelector('#ticker_rows tr[data-key]');
+  assert.ok(row, 'expected at least one ticker row');
+
+  const exchangeSelect = row.querySelector('select[data-field="exchange"]');
+  exchangeSelect.value = 'web3';
+  exchangeSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  row.querySelector('[data-web3-field="mode"]').value = 'dex';
+  row.querySelector('[data-web3-field="mode"]').dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  row.querySelector('[data-web3-field="dex_market"]').value = 'uniswap';
+  row.querySelector('[data-web3-field="dex_market"]').dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  row.querySelector('[data-web3-field="dex_chain"]').value = 'ethereum';
+  row.querySelector('[data-web3-field="dex_chain"]').dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  row.querySelector('[data-web3-field="dex_token_address"]').value = '0xf34960d9d60be18cc1d5afc1a6f012a723a28811';
+  row.querySelector('[data-web3-field="dex_token_address"]').dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  row.querySelector('[data-web3-field="dex_quote"]').value = 'USDC';
+  row.querySelector('[data-web3-field="dex_quote"]').dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+
+  const symbolInput = row.querySelector('input[data-field="symbol"]');
+  assert.equal(symbolInput.value, 'DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDC');
+});
+
+test('panel web3 candidate pools expose trade links and can write back pair symbols', async () => {
+  const { dom } = await bootPanel();
+  const row = dom.window.document.querySelector('#ticker_rows tr[data-key]');
+  assert.ok(row, 'expected at least one ticker row');
+
+  const exchangeSelect = row.querySelector('select[data-field="exchange"]');
+  exchangeSelect.value = 'web3';
+  exchangeSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  row.querySelector('[data-web3-field="mode"]').value = 'dex';
+  row.querySelector('[data-web3-field="mode"]').dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  row.querySelector('[data-web3-field="dex_token_address"]').value = '0xf34960d9d60be18cc1d5afc1a6f012a723a28811';
+  row.querySelector('[data-web3-field="dex_token_address"]').dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+
+  row.querySelector('[data-web3-fetch-candidates]').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  const tradeLink = row.querySelector('[data-web3-trade-link="0"]');
+  assert.ok(tradeLink, 'expected candidate trade link to render');
+  assert.equal(tradeLink.getAttribute('href'), 'https://app.uniswap.org/swap?chain=mainnet&outputCurrency=0xf34960d9d60be18cc1d5afc1a6f012a723a28811&inputCurrency=0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48');
+  assert.equal(tradeLink.getAttribute('target'), '_blank');
+
+  row.querySelector('[data-web3-use-pair="0"]').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  const symbolInput = row.querySelector('input[data-field="symbol"]');
+  assert.equal(symbolInput.value, 'PAIR:ETHEREUM:0X658069E3647FAAC148845A68C36831ECDE99134D');
 });
 

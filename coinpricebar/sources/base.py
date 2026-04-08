@@ -96,6 +96,14 @@ class BasePriceSource:
     def build_trade_url(cls, symbol: str) -> str | None:
         return None
 
+    @classmethod
+    def get_symbol_schema(cls) -> dict[str, object]:
+        return {
+            "symbol_placeholder": "",
+            "symbol_help": "",
+            "examples": [],
+        }
+
     def _wait_interval(self, interval_seconds: float) -> None:
         slept = 0.0
         while self.running and slept < interval_seconds:

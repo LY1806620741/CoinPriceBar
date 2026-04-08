@@ -69,6 +69,18 @@
     .variable-button.active { background: #111827; border-color: #111827; color: #fff; }
     .variable-detail { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; }
     .persistent-preview { margin-bottom: 14px; }
+    .symbol-field { display: flex; flex-direction: column; gap: 6px; }
+    .symbol-help { max-width: 360px; white-space: normal; line-height: 1.35; }
+    .web3-editor { border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; background: #fafafa; display: flex; flex-direction: column; gap: 8px; }
+    .web3-editor-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .web3-editor-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #555; }
+    .web3-editor-grid label.full { grid-column: 1 / -1; }
+    .web3-candidate-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .web3-candidate-list { display: flex; flex-direction: column; gap: 8px; }
+    .web3-candidate-item { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .web3-candidate-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .web3-candidate-links { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .link-button { color: #2563eb; text-decoration: none; font-size: 12px; }
     @media (max-width: 1080px) {
       .template-editor-layout { grid-template-columns: 1fr; }
     }
@@ -227,6 +239,7 @@
     let currentCustomTab = 'exchange';
     let currentVariableName = '';
     let tickerSortable = null;
+    let web3CandidateState = {};
     const I18N = {
       'zh-CN': {
         title: 'CoinPriceBar UI 配置面板', hint: '这里编辑的是 UI 展示配置与监控项配置。',
@@ -249,7 +262,8 @@
         custom_config_collapsed_hint: '当前使用预设格式，切换到“自定义”后再配置图标、短标识、模板与预览。', icon_style_hint: '只有在自定义展示时才需要调整图标策略。', exchange_icons_hint: '官方图标模式显示预览，其它模式可直接编辑前缀。', exchange_short_names_hint: '用于 {exchange} / {exchange_short} 变量。',
         custom_preview_hint_title: '何时需要这一区', custom_preview_hint: '只有想手动定义展示样式时才需要使用这里；预设短格式/长格式会自动处理展示。',
         performance_value_hint: '当前实际刷新频率：{label}（{value} 秒）', performance_custom_value_hint: '当前使用自定义刷新频率：{value} 秒',
-        template_presets: '推荐预设', template_presets_hint: '可直接套用下面的推荐模板作为起点。', variable_browser: '变量浏览', apply_title: '应用到标题', apply_menu: '应用到菜单', click_variable_hint: '点击上面的变量查看说明和可能值。'
+        template_presets: '推荐预设', template_presets_hint: '可直接套用下面的推荐模板作为起点。', variable_browser: '变量浏览', apply_title: '应用到标题', apply_menu: '应用到菜单', click_variable_hint: '点击上面的变量查看说明和可能值。',
+        web3_builder: 'Web3 构建器', web3_query_candidates: '查询候选池', web3_candidates: '候选池', web3_open_trade: '打开交易页', web3_use_pair: '使用此池(PAIR)', web3_use_dex: '使用此市场(DEX)', web3_candidates_empty: '未找到符合条件的候选池。', web3_candidates_loading: '正在查询候选池...', web3_candidates_missing_token: '请先填写 Token Address。', web3_candidates_error: '查询候选池失败', web3_liquidity: '流动性', web3_price: '价格'
       },
       'en-US': {
         title: 'CoinPriceBar UI Config Panel', hint: 'Edit UI display settings and monitored tickers here.',
@@ -272,7 +286,8 @@
         custom_config_collapsed_hint: 'Preset format is active. Switch to Custom before editing icons, short labels, templates, or previews.', icon_style_hint: 'Only adjust icon strategy when you really need a custom display.', exchange_icons_hint: 'Official icon mode shows previews; other modes let you edit prefixes directly.', exchange_short_names_hint: 'Used by {exchange} / {exchange_short}.',
         custom_preview_hint_title: 'When to use this area', custom_preview_hint: 'Only use this section if you want to manually define the display style; short/long presets handle layout automatically.',
         performance_value_hint: 'Current effective refresh interval: {label} ({value}s)', performance_custom_value_hint: 'Using custom refresh interval: {value}s',
-        template_presets: 'Recommended presets', template_presets_hint: 'You can directly apply one of the recommended templates below as a starting point.', variable_browser: 'Variable browser', apply_title: 'Apply to title', apply_menu: 'Apply to menu', click_variable_hint: 'Click a variable above to view its description and possible values.'
+        template_presets: 'Recommended presets', template_presets_hint: 'You can directly apply one of the recommended templates below as a starting point.', variable_browser: 'Variable browser', apply_title: 'Apply to title', apply_menu: 'Apply to menu', click_variable_hint: 'Click a variable above to view its description and possible values.',
+        web3_builder: 'Web3 Builder', web3_query_candidates: 'Find candidate pools', web3_candidates: 'Candidate pools', web3_open_trade: 'Open trade page', web3_use_pair: 'Use this pool (PAIR)', web3_use_dex: 'Use this market (DEX)', web3_candidates_empty: 'No matching candidate pools found.', web3_candidates_loading: 'Loading candidate pools...', web3_candidates_missing_token: 'Please enter a token address first.', web3_candidates_error: 'Failed to query candidate pools', web3_liquidity: 'Liquidity', web3_price: 'Price'
       }
     };
 
@@ -804,6 +819,308 @@
       return [...tickerRows].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     }
 
+    function getSourceSchema(exchange) {
+      const normalized = String(exchange || '').toLowerCase();
+      return current?.sourceSchemas?.[normalized] || { symbol_placeholder: '', symbol_help: '', examples: [] };
+    }
+
+    function normalizeEditorAddress(value) {
+      let raw = String(value || '').trim();
+      if (!raw) return '';
+      if (/^0x/i.test(raw)) raw = `0x${raw.slice(2)}`;
+      else if (raw.length === 40) raw = `0x${raw}`;
+      return raw;
+    }
+
+    function parseWeb3Symbol(symbol) {
+      const raw = String(symbol || '').trim();
+      const base = {
+        mode: 'token',
+        token_symbol: raw,
+        pair_chain: 'ethereum',
+        pair_address: '',
+        dex_market: 'auto',
+        dex_chain: 'ethereum',
+        dex_token_address: '',
+        dex_quote: '',
+      };
+      if (!raw) return base;
+      const pairParts = raw.split(':', 3);
+      if (pairParts.length === 3 && String(pairParts[0]).toUpperCase() === 'PAIR') {
+        return { ...base, mode: 'pair', pair_chain: String(pairParts[1] || 'ethereum').toLowerCase(), pair_address: String(pairParts[2] || '') };
+      }
+      const dexParts = raw.split(':');
+      if ((dexParts.length === 4 || dexParts.length === 5) && String(dexParts[0]).toUpperCase() === 'DEX') {
+        return {
+          ...base,
+          mode: 'dex',
+          dex_market: String(dexParts[1] || 'auto').toLowerCase(),
+          dex_chain: String(dexParts[2] || 'ethereum').toLowerCase(),
+          dex_token_address: String(dexParts[3] || ''),
+          dex_quote: String(dexParts[4] || ''),
+        };
+      }
+      return base;
+    }
+
+    function readWeb3EditorState(wrap) {
+      return {
+        mode: wrap.querySelector('[data-web3-field="mode"]')?.value || 'token',
+        token_symbol: wrap.querySelector('[data-web3-field="token_symbol"]')?.value || '',
+        pair_chain: wrap.querySelector('[data-web3-field="pair_chain"]')?.value || 'ethereum',
+        pair_address: wrap.querySelector('[data-web3-field="pair_address"]')?.value || '',
+        dex_market: wrap.querySelector('[data-web3-field="dex_market"]')?.value || 'auto',
+        dex_chain: wrap.querySelector('[data-web3-field="dex_chain"]')?.value || 'ethereum',
+        dex_token_address: wrap.querySelector('[data-web3-field="dex_token_address"]')?.value || '',
+        dex_quote: wrap.querySelector('[data-web3-field="dex_quote"]')?.value || '',
+      };
+    }
+
+    function buildWeb3Symbol(state) {
+      const mode = String(state?.mode || 'token').toLowerCase();
+      if (mode === 'pair') {
+        const chain = String(state?.pair_chain || '').trim();
+        const pairAddress = normalizeEditorAddress(state?.pair_address);
+        return chain && pairAddress ? `PAIR:${chain.toUpperCase()}:${pairAddress.toUpperCase()}` : '';
+      }
+      if (mode === 'dex') {
+        const market = String(state?.dex_market || '').trim();
+        const chain = String(state?.dex_chain || '').trim();
+        const tokenAddress = normalizeEditorAddress(state?.dex_token_address);
+        const quote = String(state?.dex_quote || '').trim();
+        if (!(market && chain && tokenAddress)) return '';
+        return `DEX:${market.toUpperCase()}:${chain.toUpperCase()}:${tokenAddress.toUpperCase()}${quote ? `:${quote.toUpperCase()}` : ''}`;
+      }
+      return String(state?.token_symbol || '').trim().toUpperCase();
+    }
+
+    function web3RowStateKey(row, trEl) {
+      return String(row?.key || trEl?.dataset?.key || `web3-${Date.now()}`);
+    }
+
+    function formatCompactNumber(value) {
+      const num = Number(value);
+      if (!Number.isFinite(num)) return '--';
+      if (Math.abs(num) >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(2)}B`;
+      if (Math.abs(num) >= 1_000_000) return `${(num / 1_000_000).toFixed(2)}M`;
+      if (Math.abs(num) >= 1_000) return `${(num / 1_000).toFixed(2)}K`;
+      return num.toFixed(num >= 1 ? 2 : 6);
+    }
+
+    function getWeb3CandidateState(row, trEl) {
+      const key = web3RowStateKey(row, trEl);
+      if (!web3CandidateState[key]) {
+        web3CandidateState[key] = { loading: false, error: '', items: [] };
+      }
+      return web3CandidateState[key];
+    }
+
+    async function fetchWeb3Candidates(row, trEl, wrap, symbolInput) {
+      const editorState = readWeb3EditorState(wrap);
+      const candidateState = getWeb3CandidateState(row, trEl);
+      const tokenAddress = normalizeEditorAddress(editorState.dex_token_address);
+      if (!tokenAddress) {
+        candidateState.loading = false;
+        candidateState.error = tr('web3_candidates_missing_token');
+        candidateState.items = [];
+        renderWeb3Editor(trEl, row);
+        return;
+      }
+      candidateState.loading = true;
+      candidateState.error = '';
+      candidateState.items = [];
+      renderWeb3Editor(trEl, row);
+      try {
+        const query = new URLSearchParams({
+          tokenAddress,
+          chain: editorState.dex_chain || '',
+          market: editorState.dex_market || '',
+          quote: editorState.dex_quote || '',
+        });
+        const res = await fetch(`/api/web3/candidates?${query.toString()}`);
+        const data = await res.json();
+        if (!res.ok || data.ok === false) {
+          throw new Error(data.error || tr('web3_candidates_error'));
+        }
+        candidateState.items = Array.isArray(data.candidates) ? data.candidates : [];
+        candidateState.error = '';
+      } catch (error) {
+        candidateState.items = [];
+        candidateState.error = String(error?.message || error || tr('web3_candidates_error'));
+      } finally {
+        candidateState.loading = false;
+        renderWeb3Editor(trEl, row);
+        symbolInput.value = row.symbol || symbolInput.value || '';
+      }
+    }
+
+    function renderWeb3CandidateSection(candidateState) {
+      if (candidateState.loading) {
+        return `<div class="muted">${escapeHtml(tr('web3_candidates_loading'))}</div>`;
+      }
+      if (candidateState.error) {
+        return `<div class="muted error">${escapeHtml(candidateState.error)}</div>`;
+      }
+      if (!candidateState.items.length) {
+        return `<div class="muted">${escapeHtml(tr('web3_candidates_empty'))}</div>`;
+      }
+      return `
+        <div class="web3-candidate-list">
+          ${candidateState.items.map((item, index) => `
+            <div class="web3-candidate-item">
+              <div class="variable-meta">
+                <strong>${escapeHtml(`${item.base_symbol || '--'}/${item.quote_symbol || '--'}`)}</strong>
+                <span class="badge">${escapeHtml(`${item.dex || '--'} · ${item.chain || '--'}`)}</span>
+              </div>
+              <div class="web3-candidate-meta muted">
+                <span>${escapeHtml(tr('web3_price'))}: ${escapeHtml(item.price_usd != null ? `$${formatCompactNumber(item.price_usd)}` : '--')}</span>
+                <span>${escapeHtml(tr('web3_liquidity'))}: ${escapeHtml(item.liquidity_usd != null ? `$${formatCompactNumber(item.liquidity_usd)}` : '--')}</span>
+              </div>
+              <div class="web3-candidate-links">
+                <a class="link-button" data-web3-trade-link="${index}" href="${escapeHtml(item.trade_url || '#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(tr('web3_open_trade'))}</a>
+                <button type="button" class="preset-apply-btn" data-web3-use-pair="${index}">${escapeHtml(tr('web3_use_pair'))}</button>
+                <button type="button" class="preset-apply-btn" data-web3-use-dex="${index}">${escapeHtml(tr('web3_use_dex'))}</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function syncWeb3EditorPanels(wrap) {
+      const mode = wrap.querySelector('[data-web3-field="mode"]')?.value || 'token';
+      wrap.querySelectorAll('[data-web3-panel]').forEach(panel => {
+        panel.classList.toggle('hidden', panel.dataset.web3Panel !== mode);
+      });
+    }
+
+    function renderWeb3Editor(trEl, row) {
+      const wrap = trEl.querySelector('[data-web3-editor]');
+      const symbolInput = trEl.querySelector('input[data-field="symbol"]');
+      if (!wrap || !symbolInput) return;
+      const isWeb3 = String(row.exchange || '').toLowerCase() === 'web3';
+      wrap.classList.toggle('hidden', !isWeb3);
+      if (!isWeb3) {
+        wrap.innerHTML = '';
+        return;
+      }
+      const schema = getSourceSchema('web3');
+      const editor = schema.editor || {};
+      const parsed = parseWeb3Symbol(row.symbol || symbolInput.value || '');
+      const chains = Array.isArray(editor.chains) ? editor.chains : ['ethereum'];
+      const dexes = Array.isArray(editor.dexes) ? editor.dexes : ['auto', 'uniswap'];
+      const modes = Array.isArray(editor.modes) ? editor.modes : [
+        { value: 'token', label: 'CoinGecko Token' },
+        { value: 'pair', label: 'Exact Pair' },
+        { value: 'dex', label: 'DEX Market' },
+      ];
+      const quoteExamples = Array.isArray(editor.quote_examples) ? editor.quote_examples : ['USDC', 'USDT', 'WETH'];
+      const quoteListId = `web3-quote-${String(row.key || '').replace(/[^a-z0-9_-]/gi, '-')}`;
+      const candidateState = getWeb3CandidateState(row, trEl);
+      wrap.innerHTML = `
+        <div class="web3-editor">
+          <div class="muted">${escapeHtml(tr('web3_builder'))}</div>
+          <div class="web3-editor-grid">
+            <label class="full">Mode
+              <select data-web3-field="mode">
+                ${modes.map(item => `<option value="${escapeHtml(item.value)}" ${parsed.mode === item.value ? 'selected' : ''}>${escapeHtml(item.label || item.value)}</option>`).join('')}
+              </select>
+            </label>
+          </div>
+          <div class="web3-editor-grid" data-web3-panel="token">
+            <label class="full">Token Symbol / CoinGecko ID
+              <input type="text" data-web3-field="token_symbol" value="${escapeHtml(parsed.token_symbol || '')}" placeholder="ETH-USD / CG-BITCOIN-USD">
+            </label>
+          </div>
+          <div class="web3-editor-grid" data-web3-panel="pair">
+            <label>Chain
+              <select data-web3-field="pair_chain">
+                ${chains.map(chain => `<option value="${escapeHtml(chain)}" ${parsed.pair_chain === chain ? 'selected' : ''}>${escapeHtml(chain)}</option>`).join('')}
+              </select>
+            </label>
+            <label>Pair Address
+              <input type="text" data-web3-field="pair_address" value="${escapeHtml(parsed.pair_address || '')}" placeholder="0x...">
+            </label>
+          </div>
+          <div class="web3-editor-grid" data-web3-panel="dex">
+            <label>DEX
+              <select data-web3-field="dex_market">
+                ${dexes.map(dex => `<option value="${escapeHtml(dex)}" ${parsed.dex_market === dex ? 'selected' : ''}>${escapeHtml(dex)}</option>`).join('')}
+              </select>
+            </label>
+            <label>Chain
+              <select data-web3-field="dex_chain">
+                ${chains.map(chain => `<option value="${escapeHtml(chain)}" ${parsed.dex_chain === chain ? 'selected' : ''}>${escapeHtml(chain)}</option>`).join('')}
+              </select>
+            </label>
+            <label class="full">Token Address
+              <input type="text" data-web3-field="dex_token_address" value="${escapeHtml(parsed.dex_token_address || '')}" placeholder="0x...">
+            </label>
+            <label>Quote Filter
+              <input type="text" data-web3-field="dex_quote" value="${escapeHtml(parsed.dex_quote || '')}" list="${quoteListId}" placeholder="USDC / WETH / 0x...">
+              <datalist id="${quoteListId}">${quoteExamples.map(item => `<option value="${escapeHtml(item)}"></option>`).join('')}</datalist>
+            </label>
+            <div class="full web3-candidate-actions">
+              <button type="button" class="preset-apply-btn" data-web3-fetch-candidates>${escapeHtml(tr('web3_query_candidates'))}</button>
+            </div>
+            <div class="full">
+              <div class="muted" style="margin-bottom: 6px;">${escapeHtml(tr('web3_candidates'))}</div>
+              <div data-web3-candidates>${renderWeb3CandidateSection(candidateState)}</div>
+            </div>
+          </div>
+        </div>
+      `;
+      syncWeb3EditorPanels(wrap);
+      wrap.querySelectorAll('[data-web3-field]').forEach(input => {
+        input.addEventListener('input', () => {
+          const nextSymbol = buildWeb3Symbol(readWeb3EditorState(wrap));
+          row.symbol = nextSymbol;
+          symbolInput.value = nextSymbol;
+        });
+        input.addEventListener('change', () => {
+          syncWeb3EditorPanels(wrap);
+          const nextSymbol = buildWeb3Symbol(readWeb3EditorState(wrap));
+          row.symbol = nextSymbol;
+          symbolInput.value = nextSymbol;
+        });
+      });
+      wrap.querySelector('[data-web3-fetch-candidates]')?.addEventListener('click', () => fetchWeb3Candidates(row, trEl, wrap, symbolInput));
+      wrap.querySelectorAll('[data-web3-use-pair]').forEach(button => {
+        button.addEventListener('click', () => {
+          const item = candidateState.items[Number(button.dataset.web3UsePair)];
+          if (!item?.suggested_pair_symbol) return;
+          row.symbol = item.suggested_pair_symbol;
+          symbolInput.value = item.suggested_pair_symbol;
+          renderWeb3Editor(trEl, row);
+          renderOneToOnePreview();
+        });
+      });
+      wrap.querySelectorAll('[data-web3-use-dex]').forEach(button => {
+        button.addEventListener('click', () => {
+          const item = candidateState.items[Number(button.dataset.web3UseDex)];
+          if (!item?.suggested_dex_symbol) return;
+          row.symbol = item.suggested_dex_symbol;
+          symbolInput.value = item.suggested_dex_symbol;
+          renderWeb3Editor(trEl, row);
+          renderOneToOnePreview();
+        });
+      });
+    }
+
+    function applySymbolFieldMetadata(trEl, exchange) {
+      const symbolInput = trEl.querySelector('input[data-field="symbol"]');
+      const helpEl = trEl.querySelector('[data-symbol-help]');
+      if (!symbolInput || !helpEl) return;
+      const schema = getSourceSchema(exchange);
+      const placeholder = String(schema.symbol_placeholder || '');
+      const help = String(schema.symbol_help || '');
+      symbolInput.placeholder = placeholder;
+      symbolInput.title = help || placeholder;
+      helpEl.textContent = help;
+      helpEl.classList.toggle('hidden', !help);
+      renderWeb3Editor(trEl, { exchange, symbol: symbolInput.value, key: trEl.dataset.key || '' });
+    }
+
     function normalizeOrders() {
       tickerRows.forEach((row, index) => { row.order = index; });
     }
@@ -857,7 +1174,13 @@
               ${Object.entries(current.exchanges).map(([key, label]) => `<option value="${key}" ${row.exchange === key ? 'selected' : ''}>${label}</option>`).join('')}
             </select>
           </td>
-          <td><input type="text" data-field="symbol" value="${row.symbol || ''}"></td>
+          <td>
+            <div class="symbol-field">
+              <input type="text" data-field="symbol" value="${row.symbol || ''}">
+              <div class="muted symbol-help hidden" data-symbol-help></div>
+              <div data-web3-editor class="hidden"></div>
+            </div>
+          </td>
           <td><input type="text" data-field="display_name" value="${row.display_name || ''}"></td>
           <td><button type="button" data-action="remove">${tr('remove_btn')}</button></td>
         `;
@@ -875,6 +1198,9 @@
               await populateSymbolDatalist(row.exchange);
               const symbolInput = trEl.querySelector('input[data-field="symbol"]');
               symbolInput?.setAttribute('list', `symbols-${row.exchange}`);
+              applySymbolFieldMetadata(trEl, row.exchange);
+            } else if (field === 'symbol' && String(row.exchange || '').toLowerCase() === 'web3') {
+              renderWeb3Editor(trEl, row);
             }
             renderOneToOnePreview();
           });
@@ -885,6 +1211,7 @@
           symbolInput.setAttribute('list', `symbols-${row.exchange}`);
           populateSymbolDatalist(row.exchange);
         }
+        applySymbolFieldMetadata(trEl, row.exchange);
 
         trEl.querySelector('[data-action="remove"]').addEventListener('click', () => {
           tickerRows = tickerRows.filter(item => item.key !== row.key);

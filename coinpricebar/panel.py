@@ -66,6 +66,27 @@ class ConfigPanelServer:
         self.symbol_cache[exchange] = (now, symbols)
         return symbols
 
+    def _list_web3_candidates(
+        self,
+        token_address: str,
+        chain: str = "",
+        market: str = "",
+        quote_filter: str = "",
+    ) -> list[dict]:
+        source_cls = get_source_class("web3")
+        if source_cls is None or not hasattr(source_cls, "list_market_candidates"):
+            return []
+        try:
+            return source_cls.list_market_candidates(
+                token_address=token_address,
+                chain=chain,
+                market=market,
+                quote_filter=quote_filter,
+            )
+        except Exception as e:
+            logging.warning(f"获取 Web3 候选池失败: {e}")
+            return []
+
     def start(self) -> None:
         if self.httpd:
             return
@@ -124,6 +145,23 @@ class ConfigPanelServer:
                     exchange = parse_qs(parsed.query).get("exchange", [""])[0]
                     self._send_json({"exchange": exchange, "symbols": server._list_symbols(exchange)})
                     return
+                if parsed.path == "/api/web3/candidates":
+                    query = parse_qs(parsed.query)
+                    token_address = query.get("tokenAddress", [""])[0]
+                    chain = query.get("chain", [""])[0]
+                    market = query.get("market", [""])[0]
+                    quote_filter = query.get("quote", [""])[0]
+                    self._send_json(
+                        {
+                            "ok": True,
+                            "tokenAddress": token_address,
+                            "chain": chain,
+                            "market": market,
+                            "quote": quote_filter,
+                            "candidates": server._list_web3_candidates(token_address, chain, market, quote_filter),
+                        }
+                    )
+                    return
                 self._send_json({"error": "Not found"}, status=404)
 
             def do_POST(self):
@@ -169,6 +207,10 @@ class ConfigPanelServer:
         config = self.get_config()
         tickers = self.get_tickers()
         prefs = config.ticker_preferences
+        source_schemas = {}
+        for exchange in SUPPORTED_EXCHANGES:
+            source_cls = get_source_class(exchange)
+            source_schemas[exchange] = source_cls.get_symbol_schema() if source_cls else {"symbol_placeholder": "", "symbol_help": "", "examples": []}
         items = []
         for index, ticker in enumerate(tickers):
             pref = prefs.get(ticker.key.lower()) or prefs.get(ticker.key)
@@ -199,6 +241,7 @@ class ConfigPanelServer:
             "languages": sorted(SUPPORTED_LANGUAGES),
             "exchanges": SUPPORTED_EXCHANGES,
             "exchangeShortNames": config.exchange_short_names,
+            "sourceSchemas": source_schemas,
         }
 
     def _build_html(self) -> str:
