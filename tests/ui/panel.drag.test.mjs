@@ -64,9 +64,9 @@ function buildState() {
       kucoin: { symbol_placeholder: 'BTC-USDT', symbol_help: '', examples: ['BTC-USDT'] },
       binance: { symbol_placeholder: 'ETH-USDT', symbol_help: '', examples: ['ETH-USDT'] },
       web3: {
-        symbol_placeholder: 'DEX:UNISWAP:ETHEREUM:0xTOKEN:USDC',
-        symbol_help: '支持 CoinGecko / PAIR / DEX 三种格式，DEX 示例：DEX:UNISWAP:ETHEREUM:0xTOKEN:USDC',
-        examples: ['ETH-USD', 'PAIR:ETHEREUM:0xPAIR', 'DEX:UNISWAP:ETHEREUM:0xTOKEN:USDC'],
+        symbol_placeholder: 'DEX:UNISWAP:ETHEREUM:0xTOKEN:WETH',
+        symbol_help: '支持 CoinGecko / PAIR / DEX 三种格式，DEX 示例：DEX:UNISWAP:ETHEREUM:0xTOKEN:WETH',
+        examples: ['ETH-USD', 'PAIR:ETHEREUM:0xPAIR', 'DEX:UNISWAP:ETHEREUM:0xTOKEN:WETH'],
         editor: {
           modes: [
             { value: 'token', label: 'CoinGecko Token' },
@@ -75,7 +75,7 @@ function buildState() {
           ],
           chains: ['ethereum', 'base'],
           dexes: ['auto', 'uniswap'],
-          quote_examples: ['USDC', 'USDT', 'WETH'],
+          quote_examples: ['WETH', 'USDC', 'USDT'],
         },
       },
     },
@@ -126,7 +126,7 @@ async function bootPanel() {
                     quote_symbol: 'USDC',
                     liquidity_usd: 250000,
                     price_usd: 8.47,
-                    trade_url: 'https://app.uniswap.org/swap?chain=mainnet&outputCurrency=0xf34960d9d60be18cc1d5afc1a6f012a723a28811&inputCurrency=0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+                    trade_url: 'https://app.uniswap.org/explore/tokens/ethereum/0xf34960d9d60be18cc1d5afc1a6f012a723a28811?inputCurrency=0xf34960d9d60be18cc1d5afc1a6f012a723a28811&outputCurrency=0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
                     suggested_pair_symbol: 'PAIR:ETHEREUM:0X658069E3647FAAC148845A68C36831ECDE99134D',
                     suggested_dex_symbol: 'DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDC',
                   },
@@ -254,7 +254,7 @@ test('panel updates symbol placeholder and help for web3 exchange rows', async (
 
   const symbolInput = row.querySelector('input[data-field="symbol"]');
   const help = row.querySelector('[data-symbol-help]');
-  assert.equal(symbolInput.placeholder, 'DEX:UNISWAP:ETHEREUM:0xTOKEN:USDC');
+  assert.equal(symbolInput.placeholder, 'DEX:UNISWAP:ETHEREUM:0xTOKEN:WETH');
   assert.match(help.textContent || '', /DEX:UNISWAP/);
 });
 
@@ -303,7 +303,7 @@ test('panel web3 candidate pools expose trade links and can write back pair symb
 
   const tradeLink = row.querySelector('[data-web3-trade-link="0"]');
   assert.ok(tradeLink, 'expected candidate trade link to render');
-  assert.equal(tradeLink.getAttribute('href'), 'https://app.uniswap.org/swap?chain=mainnet&outputCurrency=0xf34960d9d60be18cc1d5afc1a6f012a723a28811&inputCurrency=0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48');
+  assert.equal(tradeLink.getAttribute('href'), 'https://app.uniswap.org/explore/tokens/ethereum/0xf34960d9d60be18cc1d5afc1a6f012a723a28811?inputCurrency=0xf34960d9d60be18cc1d5afc1a6f012a723a28811&outputCurrency=0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48');
   assert.equal(tradeLink.getAttribute('target'), '_blank');
 
   row.querySelector('[data-web3-use-pair="0"]').dispatchEvent(new dom.window.Event('click', { bubbles: true }));

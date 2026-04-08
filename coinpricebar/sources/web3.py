@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from dataclasses import dataclass
 from string import hexdigits
 from urllib.parse import urlencode
@@ -39,13 +40,28 @@ WEB3_DEX_MARKET_EXAMPLES = [
     "DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:WETH",
     "DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDC",
 ]
-WEB3_SYMBOL_PLACEHOLDER = "ETH-USD / PAIR:ETHEREUM:0xPAIR / DEX:UNISWAP:ETHEREUM:0xTOKEN[:USDC]"
+WEB3_SYMBOL_PLACEHOLDER = "ETH-USD / PAIR:ETHEREUM:0xPAIR / DEX:UNISWAP:ETHEREUM:0xTOKEN[:WETH]"
 WEB3_SUPPORTED_CHAINS = ["ethereum", "base", "bsc", "arbitrum", "optimism", "polygon", "avalanche"]
 WEB3_SUPPORTED_DEXES = ["auto", "uniswap", "sushiswap", "pancakeswap", "curve", "aerodrome", "camelot", "velodrome", "traderjoe"]
-WEB3_QUOTE_EXAMPLES = ["USDC", "USDT", "WETH", "WBTC"]
-UNISWAP_SWAP_URL = "https://app.uniswap.org/swap"
-UNISWAP_CHAIN_PARAMS = {
-    "ethereum": "mainnet",
+WEB3_QUOTE_EXAMPLES = ["WETH", "USDC", "USDT", "WBTC"]
+WEB3_QUOTE_USD_PEGS = {
+    "USDT": 1.0,
+    "USDC": 1.0,
+    "DAI": 1.0,
+}
+WEB3_QUOTE_COIN_IDS = {
+    "USDT": "tether",
+    "USDC": "usd-coin",
+    "DAI": "dai",
+    "WETH": "ethereum",
+    "ETH": "ethereum",
+    "WBTC": "wrapped-bitcoin",
+    "BTC": "bitcoin",
+}
+WEB3_QUOTE_PRICE_TTL = 60.0
+UNISWAP_EXPLORE_TOKENS_URL = "https://app.uniswap.org/explore/tokens"
+UNISWAP_CHAIN_PATHS = {
+    "ethereum": "ethereum",
     "base": "base",
     "arbitrum": "arbitrum",
     "optimism": "optimism",
@@ -160,19 +176,51 @@ def _resolve_uniswap_quote_address(chain: str, quote_filter: str | None) -> str 
     return _normalize_evm_address(mapped) if mapped else None
 
 
+def _resolve_known_quote_symbol(chain: str, quote_filter: str | None) -> str | None:
+    normalized_quote = _normalize_quote_filter(quote_filter)
+    if not normalized_quote:
+        return None
+    if not _is_evm_address(normalized_quote):
+        return normalized_quote
+    normalized_chain = _normalize_market_id(chain)
+    for symbol, address in UNISWAP_QUOTE_TOKEN_ADDRESSES.get(normalized_chain, {}).items():
+        if _normalize_evm_address(address) == normalized_quote:
+            return symbol
+    return None
+
+
 def _build_uniswap_trade_url(chain: str, output_token_address: str, quote_filter: str | None = None) -> str | None:
-    chain_param = UNISWAP_CHAIN_PARAMS.get(_normalize_market_id(chain))
+    chain_path = UNISWAP_CHAIN_PATHS.get(_normalize_market_id(chain))
     output_address = _normalize_evm_address(output_token_address)
-    if not chain_param or not _is_evm_address(output_address):
+    if not chain_path or not _is_evm_address(output_address):
         return None
     params = {
-        "chain": chain_param,
-        "outputCurrency": output_address,
+        "inputCurrency": output_address,
     }
     quote_address = _resolve_uniswap_quote_address(chain, quote_filter)
     if quote_address:
-        params["inputCurrency"] = quote_address
-    return f"{UNISWAP_SWAP_URL}?{urlencode(params)}"
+        params["outputCurrency"] = quote_address
+    return f"{UNISWAP_EXPLORE_TOKENS_URL}/{chain_path}/{output_address}?{urlencode(params)}"
+
+
+def _fetch_simple_usd_prices(coin_ids: list[str]) -> dict[str, float]:
+    unique_ids = sorted({str(item).strip().lower() for item in coin_ids if str(item).strip()})
+    if not unique_ids:
+        return {}
+    query = urlencode(
+        {
+            "ids": ",".join(unique_ids),
+            "vs_currencies": WEB3_QUOTE.lower(),
+        }
+    )
+    payload = _read_json(f"{COINGECKO_SIMPLE_PRICE_URL}?{query}")
+    prices: dict[str, float] = {}
+    for coin_id in unique_ids:
+        value = (payload.get(coin_id) or {}).get(WEB3_QUOTE.lower())
+        if value is None:
+            continue
+        prices[coin_id] = float(value)
+    return prices
 
 
 class Web3PriceSource(BasePriceSource):
@@ -186,7 +234,7 @@ class Web3PriceSource(BasePriceSource):
     def get_symbol_schema(cls) -> dict[str, object]:
         return {
             "symbol_placeholder": WEB3_SYMBOL_PLACEHOLDER,
-            "symbol_help": "支持三种格式：1) CoinGecko 代币，如 ETH-USD / CG-BITCOIN-USD；2) 精确池地址，如 PAIR:<chain>:<pairAddress>；3) 指定 DEX 市场，如 DEX:<dexId|AUTO>:<chain>:<tokenAddress>[:quoteSymbol|quoteTokenAddress]。示例：DEX:UNISWAP:ETHEREUM:0xTOKEN:USDC。",
+            "symbol_help": "支持三种格式：1) CoinGecko 代币，如 ETH-USD / CG-BITCOIN-USD；2) 精确池地址，如 PAIR:<chain>:<pairAddress>；3) 指定 DEX 市场，如 DEX:<dexId|AUTO>:<chain>:<tokenAddress>[:quoteSymbol|quoteTokenAddress]。示例：DEX:UNISWAP:ETHEREUM:0xTOKEN:WETH。",
             "examples": list(cls.list_symbol_examples()),
             "editor": {
                 "modes": [
@@ -388,6 +436,7 @@ class Web3PriceSource(BasePriceSource):
     def __init__(self, update_callback, status_callback):
         super().__init__(update_callback, status_callback)
         self.current_symbols: list[str] = []
+        self.quote_usd_cache: dict[str, tuple[float, float]] = {}
 
     def _fetch_legacy_prices(self, symbols: list[str]) -> dict[str, float]:
         coin_ids: dict[str, str] = {}
@@ -397,19 +446,11 @@ class Web3PriceSource(BasePriceSource):
                 coin_ids[symbol] = coin_id
         if not coin_ids:
             return {}
-
-        query = urlencode(
-            {
-                "ids": ",".join(sorted(set(coin_ids.values()))),
-                "vs_currencies": WEB3_QUOTE.lower(),
-            }
-        )
-        payload = _read_json(f"{COINGECKO_SIMPLE_PRICE_URL}?{query}")
+        payload_prices = _fetch_simple_usd_prices(list(coin_ids.values()))
 
         prices: dict[str, float] = {}
         for symbol, coin_id in coin_ids.items():
-            coin_payload = payload.get(coin_id) or {}
-            value = coin_payload.get(WEB3_QUOTE.lower())
+            value = payload_prices.get(coin_id)
             if value is None:
                 continue
             prices[symbol] = float(value)
@@ -436,9 +477,126 @@ class Web3PriceSource(BasePriceSource):
                 continue
         return None
 
+    def _quote_usd_price(self, chain: str, quote_filter: str | None) -> float | None:
+        quote_symbol = _resolve_known_quote_symbol(chain, quote_filter)
+        if not quote_symbol:
+            return None
+        cached = self.quote_usd_cache.get(quote_symbol)
+        now = time.monotonic()
+        if cached and now - cached[0] < WEB3_QUOTE_PRICE_TTL:
+            return cached[1]
+        return WEB3_QUOTE_USD_PEGS.get(quote_symbol)
+
+    def _refresh_quote_usd_prices(self, quote_symbols: list[str]) -> None:
+        now = time.monotonic()
+        pending_symbols = []
+        coin_ids = []
+        for symbol in sorted({str(item).strip().upper() for item in quote_symbols if str(item).strip()}):
+            cached = self.quote_usd_cache.get(symbol)
+            if cached and now - cached[0] < WEB3_QUOTE_PRICE_TTL:
+                continue
+            coin_id = WEB3_QUOTE_COIN_IDS.get(symbol)
+            if not coin_id:
+                continue
+            pending_symbols.append(symbol)
+            coin_ids.append(coin_id)
+        if not coin_ids:
+            return
+        try:
+            usd_prices = _fetch_simple_usd_prices(coin_ids)
+        except Exception as e:
+            logging.debug(f"刷新 Web3 quote USD 价格失败: {e}")
+            return
+        symbol_to_coin_id = {symbol: WEB3_QUOTE_COIN_IDS[symbol] for symbol in pending_symbols}
+        for symbol, coin_id in symbol_to_coin_id.items():
+            value = usd_prices.get(coin_id)
+            if value is None:
+                continue
+            self.quote_usd_cache[symbol] = (now, float(value))
+
+    def _reference_market_price(self, pairs: list[dict], spec: DexMarketSpec) -> float | None:
+        reference_spec = DexMarketSpec(
+            market=spec.market,
+            chain=spec.chain,
+            token_address=spec.token_address,
+            quote_filter=None,
+        )
+        pair = self._pick_best_market_pair(pairs, reference_spec)
+        if not pair:
+            return None
+        return _safe_float(pair.get("priceUsd"))
+
+    def _reference_market_pair(self, pairs: list[dict], spec: DexMarketSpec) -> dict | None:
+        reference_spec = DexMarketSpec(
+            market=spec.market,
+            chain=spec.chain,
+            token_address=spec.token_address,
+            quote_filter=None,
+        )
+        return self._pick_best_market_pair(pairs, reference_spec)
+
+    def _route_quote_via_reference_pair(
+        self,
+        token_pairs_cache: dict[str, list[dict]],
+        reference_pair: dict,
+        spec: DexMarketSpec,
+    ) -> float | None:
+        native_price = _safe_float(reference_pair.get("priceNative"))
+        if native_price in {None, 0}:
+            return None
+        quote_token = reference_pair.get("quoteToken") or {}
+        quote_token_address = _normalize_evm_address(quote_token.get("address", ""))
+        if not _is_evm_address(quote_token_address) or not spec.quote_filter:
+            return None
+        route_spec = DexMarketSpec(
+            market=spec.market,
+            chain=spec.chain,
+            token_address=quote_token_address,
+            quote_filter=spec.quote_filter,
+        )
+        route_pairs = token_pairs_cache.get(quote_token_address)
+        if route_pairs is None:
+            route_pairs = self._fetch_token_pairs(quote_token_address)
+            token_pairs_cache[quote_token_address] = route_pairs
+        route_pair = self._pick_best_market_pair(route_pairs, route_spec)
+        if not route_pair:
+            return None
+        quote_price = self._extract_market_price(route_pair, route_spec)
+        if quote_price in {None, 0}:
+            return None
+        return native_price * quote_price
+
+    def _resolve_market_price(self, pairs: list[dict], spec: DexMarketSpec, token_pairs_cache: dict[str, list[dict]]) -> float | None:
+        pair = self._pick_best_market_pair(pairs, spec)
+        if pair:
+            price = self._extract_market_price(pair, spec)
+            if price is not None:
+                return price
+        if not spec.quote_filter:
+            return None
+        reference_pair = self._reference_market_pair(pairs, spec)
+        if reference_pair is not None:
+            routed_price = self._route_quote_via_reference_pair(token_pairs_cache, reference_pair, spec)
+            if routed_price is not None:
+                return routed_price
+        base_price_usd = self._reference_market_price(pairs, spec)
+        quote_price_usd = self._quote_usd_price(spec.chain, spec.quote_filter)
+        if base_price_usd is None or quote_price_usd in {None, 0}:
+            return None
+        return base_price_usd / quote_price_usd
+
     def _fetch_prices(self, symbols: list[str]) -> dict[str, float]:
         prices = self._fetch_legacy_prices(symbols)
         token_pairs_cache: dict[str, list[dict]] = {}
+        routed_quote_symbols = []
+        for symbol in symbols:
+            market_spec = self._resolve_dex_market_spec(symbol)
+            if not market_spec or not market_spec.quote_filter:
+                continue
+            quote_symbol = _resolve_known_quote_symbol(market_spec.chain, market_spec.quote_filter)
+            if quote_symbol:
+                routed_quote_symbols.append(quote_symbol)
+        self._refresh_quote_usd_prices(routed_quote_symbols)
         for symbol in symbols:
             pair_spec = self._resolve_pair_spec(symbol)
             if pair_spec:
@@ -460,10 +618,7 @@ class Web3PriceSource(BasePriceSource):
                 if pairs is None:
                     pairs = self._fetch_token_pairs(market_spec.token_address)
                     token_pairs_cache[market_spec.token_address] = pairs
-                pair = self._pick_best_market_pair(pairs, market_spec)
-                if not pair:
-                    continue
-                price = self._extract_market_price(pair, market_spec)
+                price = self._resolve_market_price(pairs, market_spec, token_pairs_cache)
             except Exception as e:
                 logging.warning(f"获取 Web3 市场行情失败: {symbol} -> {e}")
                 continue

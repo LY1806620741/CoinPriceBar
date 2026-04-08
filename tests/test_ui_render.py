@@ -1,4 +1,5 @@
 import unittest
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -45,7 +46,7 @@ class UIRenderTests(unittest.TestCase):
 
     def test_default_tickers_include_web3_kcs_ethereum_pair(self):
         self.assertIn(
-            "web3::DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDC",
+            "web3::DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDT",
             [ticker.key for ticker in get_default_tickers()],
         )
 
@@ -252,7 +253,7 @@ class UIRenderTests(unittest.TestCase):
         self.assertIn("BTC-USD", symbols)
         self.assertIn("PAIR:ETHEREUM:0XB26A868FFA4CBBA926970D7AE9C6A36D088EE38C", symbols)
         self.assertIn("PAIR:ETHEREUM:0X88E6A0C2DDD26FEEB64F039A2C41296FCB3F5640", symbols)
-        self.assertIn("DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDC", symbols)
+        self.assertIn("DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:WETH", symbols)
 
     def test_exchange_template_uses_short_label_by_default(self):
         self.app.config.exchange_short_names = {"kucoin": "KC", "binance": "BN"}
@@ -282,6 +283,30 @@ class UIRenderTests(unittest.TestCase):
         self.assertEqual(context["exchange_short"], "KC")
         self.assertEqual(context["exchange_full"], "KuCoin")
         self.assertEqual(context["exchange_icon"], "🟢 ")
+
+    def test_build_display_context_uses_dex_specific_icon_for_web3(self):
+        self.app.config.exchange_icons = {"web3": "[W3] ", "web3_uniswap": "🦄 "}
+        snapshot = MarketSnapshot(
+            exchange="web3",
+            symbol="DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDT",
+            display_name="KCS",
+            price=8.48,
+            change=0.0,
+            change_percent=0.0,
+            is_first=False,
+        )
+
+        context = CoinPriceBarApp._build_display_context(self.app, snapshot)
+
+        self.assertEqual(context["exchange_icon"], "🦄 ")
+
+    def test_build_display_context_uses_dex_specific_icon_for_web3(self):
+        self.app.config.exchange_icons = {"web3": "[W3] ", "web3_uniswap": "🦄 "}
+        snapshot = MarketSnapshot(exchange="web3", symbol="DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDT", display_name="KCS", price=8.48, change=0.0, change_percent=0.0, is_first=False)
+
+        context = CoinPriceBarApp._build_display_context(self.app, snapshot)
+
+        self.assertEqual(context["exchange_icon"], "🦄 ")
 
     def test_build_trade_url_supports_binance_c2c(self):
         url = BinanceC2CPriceSource.build_trade_url("USDT-CNY")
@@ -314,12 +339,12 @@ class UIRenderTests(unittest.TestCase):
         with patch.object(Web3PriceSource, "_fetch_pair_details", return_value=pair_payload):
             self.assertEqual(
                 Web3PriceSource.build_trade_url("PAIR:ETHEREUM:0XB26A868FFA4CBBA926970D7AE9C6A36D088EE38C"),
-                "https://app.uniswap.org/swap?chain=mainnet&outputCurrency=0xf34960d9d60be18cc1d5afc1a6f012a723a28811&inputCurrency=0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+                "https://app.uniswap.org/explore/tokens/ethereum/0xf34960d9d60be18cc1d5afc1a6f012a723a28811?inputCurrency=0xf34960d9d60be18cc1d5afc1a6f012a723a28811&outputCurrency=0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
             )
         with patch.object(Web3PriceSource, "_fetch_pair_details", return_value=pair_payload_2):
             self.assertEqual(
                 Web3PriceSource.build_trade_url("PAIR:ETHEREUM:0X88E6A0C2DDD26FEEB64F039A2C41296FCB3F5640"),
-                "https://app.uniswap.org/swap?chain=mainnet&outputCurrency=0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2&inputCurrency=0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+                "https://app.uniswap.org/explore/tokens/ethereum/0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2?inputCurrency=0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2&outputCurrency=0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
             )
 
     def test_build_trade_url_supports_web3_dex_market_spec(self):
@@ -338,7 +363,7 @@ class UIRenderTests(unittest.TestCase):
         with patch.object(Web3PriceSource, "_fetch_token_pairs", return_value=pairs):
             url = Web3PriceSource.build_trade_url("DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDC")
 
-        self.assertEqual(url, "https://app.uniswap.org/swap?chain=mainnet&outputCurrency=0xf34960d9d60be18cc1d5afc1a6f012a723a28811&inputCurrency=0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")
+        self.assertEqual(url, "https://app.uniswap.org/explore/tokens/ethereum/0xf34960d9d60be18cc1d5afc1a6f012a723a28811?inputCurrency=0xf34960d9d60be18cc1d5afc1a6f012a723a28811&outputCurrency=0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")
 
     def test_fetch_prices_supports_web3_dex_market_spec(self):
         source = Web3PriceSource(lambda *_: None, lambda *_: None)
@@ -359,6 +384,143 @@ class UIRenderTests(unittest.TestCase):
             prices = source._fetch_prices(["DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDC"])
 
         self.assertEqual(prices["DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDC"], 8.4724)
+
+    def test_fetch_prices_supports_web3_uniswap_routed_usdt_quote(self):
+        source = Web3PriceSource(lambda *_: None, lambda *_: None)
+        pairs = [
+            {
+                "chainId": "ethereum",
+                "dexId": "uniswap",
+                "pairAddress": "0xB26a868fFA4Cbba926970D7ae9c6a36D088eE38C",
+                "baseToken": {"address": "0xf34960d9d60be18cc1d5afc1a6f012a723a28811", "symbol": "KCS"},
+                "quoteToken": {"address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", "symbol": "WETH"},
+                "priceNative": "0.00378",
+                "priceUsd": "8.48637",
+                "liquidity": {"usd": 4897850.6},
+            }
+        ]
+
+        def fake_refresh(quote_symbols):
+            source.quote_usd_cache["USDT"] = (time.monotonic(), 1.0)
+
+        with patch.object(Web3PriceSource, "_fetch_token_pairs", return_value=pairs), patch.object(source, "_refresh_quote_usd_prices", side_effect=fake_refresh):
+            prices = source._fetch_prices(["DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDT"])
+
+        self.assertAlmostEqual(prices["DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDT"], 8.48637, places=5)
+
+    def test_fetch_prices_uses_dynamic_quote_usd_not_fixed_one_to_one(self):
+        source = Web3PriceSource(lambda *_: None, lambda *_: None)
+        pairs = [
+            {
+                "chainId": "ethereum",
+                "dexId": "uniswap",
+                "pairAddress": "0xB26a868fFA4Cbba926970D7ae9c6a36D088eE38C",
+                "baseToken": {"address": "0xf34960d9d60be18cc1d5afc1a6f012a723a28811", "symbol": "KCS"},
+                "quoteToken": {"address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", "symbol": "WETH"},
+                "priceUsd": "8.48637",
+                "liquidity": {"usd": 4897850.6},
+            }
+        ]
+
+        original_fetch = source._refresh_quote_usd_prices
+
+        def fake_refresh(quote_symbols):
+            original_fetch([])
+            now = time.monotonic()
+            source.quote_usd_cache["USDT"] = (now, 0.998)
+            source.quote_usd_cache["USDC"] = (now, 1.002)
+
+        with patch.object(Web3PriceSource, "_fetch_token_pairs", return_value=pairs), patch.object(source, "_refresh_quote_usd_prices", side_effect=fake_refresh):
+            prices = source._fetch_prices(
+                [
+                    "DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDT",
+                    "DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDC",
+                ]
+            )
+
+        self.assertAlmostEqual(prices["DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDT"], 8.5033767535, places=6)
+        self.assertAlmostEqual(prices["DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDC"], 8.4694311377, places=6)
+        self.assertGreater(prices["DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDT"], prices["DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDC"])
+
+    def test_fetch_prices_prefers_same_dex_route_via_reference_pair(self):
+        source = Web3PriceSource(lambda *_: None, lambda *_: None)
+        kcs_pairs = [
+            {
+                "chainId": "ethereum",
+                "dexId": "uniswap",
+                "pairAddress": "0xB26a868fFA4Cbba926970D7ae9c6a36D088eE38C",
+                "baseToken": {"address": "0xf34960d9d60be18cc1d5afc1a6f012a723a28811", "symbol": "KCS"},
+                "quoteToken": {"address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", "symbol": "WETH"},
+                "priceNative": "0.00378",
+                "priceUsd": "8.30",
+                "liquidity": {"usd": 4897850.6},
+            }
+        ]
+        weth_pairs = [
+            {
+                "chainId": "ethereum",
+                "dexId": "uniswap",
+                "pairAddress": "0x1111111111111111111111111111111111111111",
+                "baseToken": {"address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", "symbol": "WETH"},
+                "quoteToken": {"address": "0xdAC17F958D2ee523a2206206994597C13D831ec7", "symbol": "USDT"},
+                "priceNative": "2245.0714285714",
+                "priceUsd": "2245.00",
+                "liquidity": {"usd": 9999999},
+            }
+        ]
+
+        def fake_fetch(token_address):
+            normalized = str(token_address).lower()
+            if normalized == "0xf34960d9d60be18cc1d5afc1a6f012a723a28811":
+                return kcs_pairs
+            if normalized == "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2":
+                return weth_pairs
+            return []
+
+        with patch.object(Web3PriceSource, "_fetch_token_pairs", side_effect=fake_fetch):
+            prices = source._fetch_prices(["DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDT"])
+
+        self.assertAlmostEqual(prices["DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDT"], 8.48637, places=5)
+
+    def test_fetch_prices_prefers_same_dex_route_via_reference_pair(self):
+        source = Web3PriceSource(lambda *_: None, lambda *_: None)
+        kcs_pairs = [
+            {
+                "chainId": "ethereum",
+                "dexId": "uniswap",
+                "pairAddress": "0xB26a868fFA4Cbba926970D7ae9c6a36D088eE38C",
+                "baseToken": {"address": "0xf34960d9d60be18cc1d5afc1a6f012a723a28811", "symbol": "KCS"},
+                "quoteToken": {"address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", "symbol": "WETH"},
+                "priceNative": "0.00378",
+                "priceUsd": "8.30",
+                "liquidity": {"usd": 4897850.6},
+            }
+        ]
+        weth_pairs = [
+            {
+                "chainId": "ethereum",
+                "dexId": "uniswap",
+                "pairAddress": "0x1111111111111111111111111111111111111111",
+                "baseToken": {"address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", "symbol": "WETH"},
+                "quoteToken": {"address": "0xdAC17F958D2ee523a2206206994597C13D831ec7", "symbol": "USDT"},
+                "priceNative": "2245.0714285714",
+                "priceUsd": "2245.00",
+                "liquidity": {"usd": 9999999},
+            }
+        ]
+
+        def fake_fetch(token_address):
+            normalized = str(token_address).lower()
+            if normalized == "0xf34960d9d60be18cc1d5afc1a6f012a723a28811":
+                return kcs_pairs
+            if normalized == "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2":
+                return weth_pairs
+            return []
+
+        with patch.object(Web3PriceSource, "_fetch_token_pairs", side_effect=fake_fetch):
+            prices = source._fetch_prices(["DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDT"])
+
+        self.assertAlmostEqual(prices["DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDT"], 8.48637, places=5)
 
     def test_list_market_candidates_serializes_clickable_pool_candidates(self):
         pairs = [
@@ -384,7 +546,7 @@ class UIRenderTests(unittest.TestCase):
             )
 
         self.assertEqual(len(candidates), 1)
-        self.assertEqual(candidates[0]["trade_url"], "https://app.uniswap.org/swap?chain=mainnet&outputCurrency=0xf34960d9d60be18cc1d5afc1a6f012a723a28811&inputCurrency=0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")
+        self.assertEqual(candidates[0]["trade_url"], "https://app.uniswap.org/explore/tokens/ethereum/0xf34960d9d60be18cc1d5afc1a6f012a723a28811?inputCurrency=0xf34960d9d60be18cc1d5afc1a6f012a723a28811&outputCurrency=0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")
         self.assertEqual(candidates[0]["suggested_pair_symbol"], "PAIR:ETHEREUM:0X658069E3647FAAC148845A68C36831ECDE99134D")
         self.assertEqual(candidates[0]["suggested_dex_symbol"], "DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDC")
 

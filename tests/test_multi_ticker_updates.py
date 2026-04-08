@@ -71,7 +71,7 @@ class MultiTickerUpdateTests(unittest.TestCase):
         self.app._render_text = lambda snapshot, template, is_title=False: CoinPriceBarApp._render_text(self.app, snapshot, template, is_title)
         self.app._refresh_snapshot_ui = lambda key: CoinPriceBarApp._refresh_snapshot_ui(self.app, key)
         self.app._process_ui_queue = lambda _=None: CoinPriceBarApp._process_ui_queue(self.app, _)
-        self.app._set_title_icon = lambda exchange: setattr(self.app, "_last_title_icon_exchange", exchange)
+        self.app._set_title_icon = lambda exchange, symbol=None: setattr(self.app, "_last_title_icon_exchange", (exchange, symbol))
 
     def test_refresh_snapshot_updates_title_and_second_menu_item(self):
         CoinPriceBarApp._refresh_snapshot_ui(self.app, self.app.active_tickers[0].key)
@@ -236,7 +236,7 @@ class MultiTickerUpdateTests(unittest.TestCase):
         item = MenuItemWithNativeStub("BTC")
         original_builder = CoinPriceBarApp._build_menu_icon
         try:
-            CoinPriceBarApp._build_menu_icon = staticmethod(lambda exchange: object())
+            CoinPriceBarApp._build_menu_icon = staticmethod(lambda exchange, symbol=None: object())
             CoinPriceBarApp._apply_menu_item_icon(self.app, item, "kucoin")
             self.assertIsNotNone(item._menuitem.image)
         finally:
@@ -247,8 +247,8 @@ class MultiTickerUpdateTests(unittest.TestCase):
         original_loader = CoinPriceBarApp._load_cached_exchange_icon
         original_builder = CoinPriceBarApp._build_menu_icon
         try:
-            CoinPriceBarApp._load_cached_exchange_icon = staticmethod(lambda exchange: object())
-            CoinPriceBarApp._build_menu_icon = staticmethod(lambda exchange: None)
+            CoinPriceBarApp._load_cached_exchange_icon = staticmethod(lambda exchange, symbol=None: object())
+            CoinPriceBarApp._build_menu_icon = staticmethod(lambda exchange, symbol=None: None)
             CoinPriceBarApp._apply_menu_item_icon(self.app, item, "kucoin")
             self.assertIsNotNone(item._menuitem.image)
         finally:
@@ -261,9 +261,36 @@ class MultiTickerUpdateTests(unittest.TestCase):
         original_loader = CoinPriceBarApp._load_cached_exchange_icon
         original_builder = CoinPriceBarApp._build_menu_icon
         try:
-            CoinPriceBarApp._load_cached_exchange_icon = staticmethod(lambda exchange: None)
-            CoinPriceBarApp._build_menu_icon = staticmethod(lambda exchange: fallback_icon)
+            CoinPriceBarApp._load_cached_exchange_icon = staticmethod(lambda exchange, symbol=None: None)
+            CoinPriceBarApp._build_menu_icon = staticmethod(lambda exchange, symbol=None: fallback_icon)
             CoinPriceBarApp._apply_menu_item_icon(self.app, item, "kucoin")
+            self.assertIs(item._menuitem.image, fallback_icon)
+        finally:
+            CoinPriceBarApp._load_cached_exchange_icon = original_loader
+            CoinPriceBarApp._build_menu_icon = original_builder
+
+    def test_resolve_icon_key_uses_web3_dex_source(self):
+        icon_key = CoinPriceBarApp._resolve_icon_key(
+            "web3",
+            "DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDT",
+        )
+
+        self.assertEqual(icon_key, "web3_uniswap")
+
+    def test_apply_menu_item_icon_uses_symbol_aware_web3_icon_key(self):
+        item = MenuItemWithNativeStub("KCS")
+        fallback_icon = object()
+        original_loader = CoinPriceBarApp._load_cached_exchange_icon
+        original_builder = CoinPriceBarApp._build_menu_icon
+        try:
+            CoinPriceBarApp._load_cached_exchange_icon = staticmethod(lambda exchange, symbol=None: None)
+            CoinPriceBarApp._build_menu_icon = staticmethod(lambda exchange, symbol=None: fallback_icon if symbol and symbol.startswith("DEX:UNISWAP:") else None)
+            CoinPriceBarApp._apply_menu_item_icon(
+                self.app,
+                item,
+                "web3",
+                "DEX:UNISWAP:ETHEREUM:0XF34960D9D60BE18CC1D5AFC1A6F012A723A28811:USDT",
+            )
             self.assertIs(item._menuitem.image, fallback_icon)
         finally:
             CoinPriceBarApp._load_cached_exchange_icon = original_loader
@@ -286,7 +313,7 @@ class MultiTickerUpdateTests(unittest.TestCase):
         original_download = CoinPriceBarApp._download_exchange_icon
         original_is_valid = CoinPriceBarApp._is_valid_cache_file
         try:
-            CoinPriceBarApp._download_exchange_icon = staticmethod(lambda exchange: Path("/tmp/fake-logo.menu.png"))
+            CoinPriceBarApp._download_exchange_icon = staticmethod(lambda exchange, symbol=None: Path("/tmp/fake-logo.menu.png"))
             CoinPriceBarApp._is_valid_cache_file = staticmethod(lambda _path: True)
 
             class FakeImage:
