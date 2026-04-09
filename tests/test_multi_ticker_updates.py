@@ -132,6 +132,7 @@ class MultiTickerUpdateTests(unittest.TestCase):
             TickerConfig(exchange="binance", symbol="ETH-USDT", display_name="ETH"),
             TickerConfig(exchange="kucoin", symbol="BTC-USDT", display_name="BTC"),
         ]
+        self.app.monitored_tickers = list(self.app.all_tickers)
         self.app.config.ticker_preferences = {
             "kucoin::btc-usdt": UITickerPreference(key="kucoin::btc-usdt", visible=True, order=0, pinned_title=False),
             "binance::eth-usdt": UITickerPreference(key="binance::eth-usdt", visible=True, order=1, pinned_title=True),
@@ -141,6 +142,21 @@ class MultiTickerUpdateTests(unittest.TestCase):
         visible = CoinPriceBarApp._visible_tickers(self.app)
 
         self.assertEqual([ticker.key for ticker in visible], ["binance::ETH-USDT", "kucoin::BTC-USDT"])
+
+    def test_visible_tickers_exclude_hidden_items_from_monitored_set(self):
+        self.app.monitored_tickers = [
+            TickerConfig(exchange="kucoin", symbol="BTC-USDT", display_name="BTC"),
+            TickerConfig(exchange="binance", symbol="ETH-USDT", display_name="ETH"),
+        ]
+        self.app.config.ticker_preferences = {
+            "kucoin::btc-usdt": UITickerPreference(key="kucoin::btc-usdt", visible=True, order=0, pinned_title=True),
+            "binance::eth-usdt": UITickerPreference(key="binance::eth-usdt", visible=False, order=1, pinned_title=False),
+        }
+        self.app._get_ticker_preference = lambda ticker: CoinPriceBarApp._get_ticker_preference(self.app, ticker)
+
+        visible = CoinPriceBarApp._visible_tickers(self.app)
+
+        self.assertEqual([ticker.key for ticker in visible], ["kucoin::BTC-USDT"])
 
     def test_price_update_flow_replaces_loading_state_for_visible_item(self):
         target_key = self.app.active_tickers[1].key

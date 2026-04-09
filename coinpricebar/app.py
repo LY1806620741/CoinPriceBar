@@ -152,17 +152,15 @@ class CoinPriceBarApp(rumps.App):
         self.config = config or AppConfig.default()
         self.config_path = DEFAULT_CONFIG_PATH
         self.all_tickers = tickers or list(self.config.tickers or get_default_tickers())
-        self.monitored_tickers = [
-            ticker for ticker in self.all_tickers
-            if ticker.enabled and self.config.exchanges.get(ticker.exchange.lower()) and self.config.exchanges[ticker.exchange.lower()].enabled
-        ]
-        self.active_tickers = self._visible_tickers()
+        self.monitored_tickers = []
+        self.active_tickers = []
         self.title_ticker_index = self._resolve_title_ticker_index()
         self.ui_queue = queue.Queue()
         self.status_by_exchange: Dict[str, str] = {}
         self.snapshots: Dict[str, MarketSnapshot] = {}
         self.price_menu_items: Dict[str, rumps.MenuItem] = {}
-        self.monitor = MultiSourcePriceMonitor(self.monitored_tickers, self._on_price_update, self._on_status_update)
+        self._rebuild_active_tickers()
+        self.monitor = MultiSourcePriceMonitor(self.active_tickers, self._on_price_update, self._on_status_update)
         self.panel_server = ConfigPanelServer(self._get_current_config, self._get_all_tickers, self._save_ui_config_payload)
         self._quitting = False
         self._status_item = None
@@ -261,11 +259,9 @@ class CoinPriceBarApp(rumps.App):
         self.config = load_app_config(self.config_path)
         self.all_tickers = list(self.config.tickers or get_default_tickers())
         self.monitor.stop_all()
+        self._rebuild_active_tickers()
         self.monitor = MultiSourcePriceMonitor(
-            [
-                ticker for ticker in self.all_tickers
-                if ticker.enabled and self.config.exchanges.get(ticker.exchange.lower()) and self.config.exchanges[ticker.exchange.lower()].enabled
-            ],
+            self.active_tickers,
             self._on_price_update,
             self._on_status_update,
         )
@@ -280,7 +276,7 @@ class CoinPriceBarApp(rumps.App):
         )
 
     def _visible_tickers(self) -> list[TickerConfig]:
-        ordered = [ticker for ticker in self.all_tickers if ticker.enabled]
+        ordered = list(getattr(self, "monitored_tickers", None) or [ticker for ticker in self.all_tickers if ticker.enabled])
         visible = [ticker for ticker in ordered if self._get_ticker_preference(ticker).visible]
         return visible
 
@@ -315,7 +311,7 @@ class CoinPriceBarApp(rumps.App):
     def _init_snapshots(self):
         existing = getattr(self, "snapshots", {}) or {}
         self.snapshots = {}
-        for ticker in self.monitored_tickers:
+        for ticker in self.active_tickers:
             snapshot = existing.get(ticker.key) or MarketSnapshot(
                 exchange=ticker.exchange,
                 symbol=ticker.normalized_symbol,

@@ -103,16 +103,16 @@ Changes to `config.json` can be reloaded live and only affect UI rendering, not 
 
 ### UI behavior notes
 
-- Items in `DEFAULT_TICKERS` stay subscribed and keep receiving updates
-- `ui.tickers` only controls visibility, ordering, and which item is pinned to the title
-- Hidden items still update in the background, so showing them again restores live values immediately
+- Only items that are both enabled and currently visible will start subscriptions or polling
+- `ui.tickers` directly controls which monitored items actually run, their order, and which one is pinned to the title
+- If an item is hidden, or an exchange/source has no visible items left, that source subscription / polling loop stops
 
 ### Changing monitored pairs
 
 Edit `DEFAULT_TICKERS` in `coinpricebar/config.py`:
 
 - Order = display order
-- First `max_visible` items = actual visible items
+- Currently visible items = the ones that actually subscribe / poll and render
 - Tuple format: `("exchange", "symbol", "display_name")`
 
 ### Project structure
